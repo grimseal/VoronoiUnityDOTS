@@ -7,7 +7,7 @@ namespace Voronoi.Handlers
 		public static int InsertTreeNode(
 			int node,
 			int arc,
-			ref NativeArray<int> treeArc,
+			ref NativeArray<int> treeValue,
 			ref NativeArray<int> treeLeft,
 			ref NativeArray<int> treeRight,
 			ref NativeArray<int> treeParent,
@@ -18,7 +18,7 @@ namespace Voronoi.Handlers
 			ref int root)
 		{
 			var successor = treeCount;
-			treeArc[successor] = arc;
+			treeValue[successor] = arc;
 			treeCount++;
 
             int parent;

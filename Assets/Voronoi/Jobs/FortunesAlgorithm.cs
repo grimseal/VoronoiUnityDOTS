@@ -10,7 +10,7 @@ using static Voronoi.Handlers.MinHeap;
 
 namespace Voronoi.Jobs
 {
-	[BurstCompile]
+	[BurstCompile(CompileSynchronously = true)]
 	public struct FortunesAlgorithm : IJob
 	{
 		public NativeArray<VSite> Sites;
@@ -27,9 +27,10 @@ namespace Voronoi.Jobs
 
 			var edgesEnds = new NativeList<float2>(Edges.Capacity, Allocator.Temp);
 			
+			var capacity = Sites.Length * 2;
+			
 			var treeCount = 0;
 			var rbTreeRoot = -1;
-			var capacity = Sites.Length * 2;
 			var treeValue = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeLeft = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeRight = new NativeArray<int>(capacity, Allocator.Temp); 
@@ -37,11 +38,16 @@ namespace Voronoi.Jobs
 			var treePrevious = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeNext = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeRed = new NativeArray<bool>(capacity, Allocator.Temp);
+			
 			var eventsLength = (int) (Sites.Length * 1.05f);
 			var events = new NativeArray<FortuneEvent>(eventsLength, Allocator.Temp);
-			var beachSections = new NativeList<Arc>(capacity, Allocator.Temp);
 			var deletedCapacity = math.ceilpow2((int) (Sites.Length * 0.1f));
 			var deleted = new NativeHashMap<int, byte>(deletedCapacity, Allocator.Temp);
+
+			var arcSites = new NativeList<int>(capacity, Allocator.Temp);
+			var arcEdges = new NativeList<int>(capacity, Allocator.Temp);
+			var arcEvents = new NativeList<FortuneEventArc>(capacity, Allocator.Temp);
+			
 
 			for (var i = 0; i < Sites.Length; i++)
 			{
@@ -66,7 +72,7 @@ namespace Voronoi.Jobs
 				var fEvent = EventPop(ref events, ref eventsCount);
 				if (fEvent.IsSiteEvent)
 					AddBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds,
-						ref beachSections,
+						ref arcSites, ref arcEdges, ref arcEvents,
 						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
 						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
 						ref treeCount, ref rbTreeRoot);
@@ -74,14 +80,16 @@ namespace Voronoi.Jobs
 				{
 					if (deleted.ContainsKey(fEvent.Id)) deleted.Remove(fEvent.Id);
 					else RemoveBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds, 
-						ref beachSections,
+						ref arcSites, ref arcEdges, ref arcEvents,
 						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
 						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
 						ref treeCount, ref rbTreeRoot);
 				}
 			}
 
-			Debug.Log(Edges.Length);
+			// Debug.Log(Edges.Length);
+			// Debug.Log(deletedCapacity);
+			// Debug.Log(deleted.Capacity);
 			
 			var newIndex = 0;
 			var temp = new NativeList<float2>(4, Allocator.Temp);

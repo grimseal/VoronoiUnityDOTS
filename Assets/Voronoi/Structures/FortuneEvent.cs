@@ -4,8 +4,6 @@ namespace Voronoi.Structures
 {
 	public struct FortuneEvent
 	{
-		public static int MaxId;
-		
 		public readonly int Id;
 
 		public readonly byte Type;
@@ -28,7 +26,6 @@ namespace Voronoi.Structures
 
 		public FortuneEvent(ref int eventIdSeq, int siteIndex, float siteX, float siteY)
 		{
-			// Exists = true;
 			Type = SiteEventType;
 			Id = eventIdSeq++;
 			Site = (ushort) siteIndex;
@@ -40,7 +37,6 @@ namespace Voronoi.Structures
 
 		public FortuneEvent(ref int eventIdSeq, ref float2 point, float yCenter, int nodeIndex)
 		{
-			// Exists = true;
 			Type = CircleEventType;
 			Id = eventIdSeq++;
 			X = point.x;
@@ -49,15 +45,6 @@ namespace Voronoi.Structures
 			Node = nodeIndex;
 			Site = ushort.MaxValue;
 		}
-
-		// public int CompareTo(object obj)
-		// {
-		// 	var other = (FortuneEvent) obj;
-		// 	var c = Y.CompareTo(other.Y);
-		// 	return c == 0 ? X.CompareTo(other.X) : c;
-		// }
-		
-		
 
 		private const byte SiteEventType = 1;
 
