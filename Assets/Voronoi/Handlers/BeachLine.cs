@@ -3,7 +3,7 @@ using Unity.Mathematics;
 using Voronoi.Helpers;
 using Voronoi.Structures;
 using static Voronoi.Handlers.MinHeap;
-using static Voronoi.Handlers.RedBlueTree;
+using static Voronoi.Handlers.RedBlackTree;
 
 namespace Voronoi.Handlers
 {
@@ -11,22 +11,22 @@ namespace Voronoi.Handlers
 	{
 		public static void AddBeachArc(
 			FortuneEvent fortuneEvent,
-			NativeArray<VSite> sites,
-			NativeHashMap<int, int> sitesMap,
-			NativeList<VEdge> edges,
-			NativeList<float2> edgesEnds,
-			NativeList<Arc> arcs,
-			NativeArray<FortuneEvent> events, 
-			NativeHashMap<int, byte> deleted,
+			ref NativeArray<VSite> sites,
+			ref NativeHashMap<int, int> sitesMap,
+			ref NativeList<VEdge> edges,
+			ref NativeList<float2> edgesEnds,
+			ref NativeList<Arc> arcs,
+			ref NativeArray<FortuneEvent> events, 
+			ref NativeHashMap<int, byte> deleted,
 			ref int eventsCount,
 			ref int eventIdSeq,
-			NativeArray<int> treeArc, 
-			NativeArray<int> treeLeft, 
-			NativeArray<int> treeRight, 
-			NativeArray<int> treeParent, 
-			NativeArray<int> treePrevious, 
-			NativeArray<int> treeNext, 
-			NativeArray<bool> treeRed,
+			ref NativeArray<int> treeArc, 
+			ref NativeArray<int> treeLeft, 
+			ref NativeArray<int> treeRight, 
+			ref NativeArray<int> treeParent, 
+			ref NativeArray<int> treePrevious, 
+			ref NativeArray<int> treeNext, 
+			ref NativeArray<bool> treeRed,
 			ref int treeCount,
 			ref int root) 
 		{
@@ -42,7 +42,7 @@ namespace Voronoi.Handlers
             //find the parabola(s) above this site
             while (node > -1 && leftNode < 0 && rightNode < 0)
             {
-                var distanceLeft = LeftBreakpoint(node, treeArc, treePrevious, arcs, sites, directrix) - x;
+                var distanceLeft = LeftBreakpoint(node, ref treeArc, ref treePrevious, ref arcs, ref sites, directrix) - x;
                 if (distanceLeft > 0)
                 {
                     //the new site is before the left breakpoint
@@ -57,7 +57,7 @@ namespace Voronoi.Handlers
                     continue;
                 }
 
-                var distanceRight = x - RightBreakpoint(node, treeArc, treeNext, arcs, sites, directrix);
+                var distanceRight = x - RightBreakpoint(node, ref treeArc, ref treeNext, ref arcs, ref sites, directrix);
                 if (distanceRight > 0)
                 {
                     //the new site is after the right breakpoint
@@ -99,8 +99,8 @@ namespace Voronoi.Handlers
 
             //left section could be null, in which case this node is the first
             //in the tree
-            var newNode = InsertSuccessor(leftNode, arcs.Length - 1,
-	            treeArc, treeLeft, treeRight, treeParent, treePrevious, treeNext, treeRed,
+            var newNode = TreeInsert(leftNode, arcs.Length - 1,
+	            ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed,
 	            ref treeCount, ref root);
 
             //new beach section is the first beach section to be added
@@ -131,8 +131,8 @@ namespace Voronoi.Handlers
                 //however we need to insert the right section defined by the arc
                 var copy = arcs.Length;
                 arcs.Add(new Arc(copy, arcs[treeArc[leftNode]].Site));
-                rightNode = InsertSuccessor(newNode, copy,
-	                treeArc, treeLeft, treeRight, treeParent, treePrevious, treeNext, treeRed,
+                rightNode = TreeInsert(newNode, copy,
+	                ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed,
 	                ref treeCount, ref root);
 
                 //grab the projection of this site onto the parabola
@@ -148,8 +148,8 @@ namespace Voronoi.Handlers
                 //create the two half edges corresponding to this intersection
                 var leftEdge = edges.Length;
                 var rightEdge = leftEdge + 1;
-                AddEdge(new VEdge(leftEdge, intersection, site, leftNodeSite, rightEdge, sitesMap), edges, edgesEnds);
-                AddEdge(new VEdge(rightEdge, intersection, leftNodeSite, site, sitesMap), edges, edgesEnds);
+                AddEdge(new VEdge(leftEdge, intersection, site, leftNodeSite, rightEdge, ref sitesMap), ref edges, ref edgesEnds);
+                AddEdge(new VEdge(rightEdge, intersection, leftNodeSite, site, ref sitesMap), ref edges, ref edgesEnds);
 
                 //store the left edge on each arc section
                 {
@@ -164,8 +164,8 @@ namespace Voronoi.Handlers
                 }
 
                 //create circle events
-                CheckCircle(leftNode, treeArc, treePrevious, treeNext, arcs, sites, events, ref eventsCount, ref eventIdSeq);
-                CheckCircle(rightNode, treeArc, treePrevious, treeNext, arcs, sites, events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(leftNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(rightNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
             }
 
             //site is the last beach section on the beach line
@@ -182,9 +182,9 @@ namespace Voronoi.Handlers
 	            var start = new float2((sites[leftNodeSite].X + sites[site].X) / 2, float.MinValue);
 
 	            // new edge
-	            AddEdge(new VEdge(newEdge, start, site, leftNodeSite, infEdge, sitesMap), edges, edgesEnds);
+	            AddEdge(new VEdge(newEdge, start, site, leftNodeSite, infEdge, ref sitesMap), ref edges, ref edgesEnds);
 	            // inf edge	            
-	            AddEdge(new VEdge(infEdge, start, leftNodeSite, site, sitesMap), edges, edgesEnds);
+	            AddEdge(new VEdge(infEdge, start, leftNodeSite, site, ref sitesMap), ref edges, ref edgesEnds);
 
 	            {
 		            var newNodeArc = arcs[treeArc[newNode]];
@@ -244,41 +244,41 @@ namespace Voronoi.Handlers
                 //next we create a two new edges
                 {
 	                var edge = edges.Length;
-	                AddEdge(new VEdge(edge, vertex, site, leftNodeArc.Site, sitesMap), edges, edgesEnds);
+	                AddEdge(new VEdge(edge, vertex, site, leftNodeArc.Site, ref sitesMap), ref edges, ref edgesEnds);
 	                var newNodeArc = arcs[treeArc[newNode]];
 	                newNodeArc.Edge = edge;
 	                arcs[newNodeArc.Index] = newNodeArc;
                 }
                 {
 	                var edge = edges.Length;
-	                AddEdge(new VEdge(edge, vertex, rightNodeArc.Site, site, sitesMap), edges, edgesEnds);
+	                AddEdge(new VEdge(edge, vertex, rightNodeArc.Site, site, ref sitesMap), ref edges, ref edgesEnds);
 	                rightNodeArc.Edge = edge;
 	                arcs[rightNodeArc.Index] = rightNodeArc;
                 }
 
-                CheckCircle(leftNode, treeArc, treePrevious, treeNext, arcs, sites, events, ref eventsCount, ref eventIdSeq);
-                CheckCircle(rightNode, treeArc, treePrevious, treeNext, arcs, sites, events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(leftNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(rightNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
             }
 		}
 
 		public static void RemoveBeachArc(
 			FortuneEvent fortuneEvent, 
-			NativeArray<VSite> sites,
-			NativeHashMap<int, int> sitesMap,
-			NativeList<VEdge> edges,
-			NativeList<float2> edgesEnds,
-			NativeList<Arc> arcs,
-			NativeArray<FortuneEvent> events,
-			NativeHashMap<int, byte> deleted,
+			ref NativeArray<VSite> sites,
+			ref NativeHashMap<int, int> sitesMap,
+			ref NativeList<VEdge> edges,
+			ref NativeList<float2> edgesEnds,
+			ref NativeList<Arc> arcs,
+			ref NativeArray<FortuneEvent> events,
+			ref NativeHashMap<int, byte> deleted,
 			ref int eventsCount,
 			ref int eventIdSeq,
-			NativeArray<int> treeArc, 
-			NativeArray<int> treeLeft, 
-			NativeArray<int> treeRight, 
-			NativeArray<int> treeParent, 
-			NativeArray<int> treePrevious, 
-			NativeArray<int> treeNext, 
-			NativeArray<bool> treeRed,
+			ref NativeArray<int> treeArc, 
+			ref NativeArray<int> treeLeft, 
+			ref NativeArray<int> treeRight, 
+			ref NativeArray<int> treeParent, 
+			ref NativeArray<int> treePrevious, 
+			ref NativeArray<int> treeNext, 
+			ref NativeArray<bool> treeRed,
 			ref int treeCount,
 			ref int root)
 		{
@@ -354,25 +354,25 @@ namespace Voronoi.Handlers
 
             //create a new edge with start point at the vertex and assign it to next
             var newEdge = edges.Length;
-            AddEdge(new VEdge(newEdge, vertex, nextArc.Site, prevArc.Site, sitesMap), edges, edgesEnds);
+            AddEdge(new VEdge(newEdge, vertex, nextArc.Site, prevArc.Site, ref sitesMap), ref edges, ref edgesEnds);
             nextArc.Edge = newEdge;
             arcs[nextArc.Index] = nextArc;
             
             //remove the sectionfrom the tree
-            RemoveNode(node, treeLeft, treeRight, treeParent, treePrevious, treeNext, treeRed, ref root);
+            TreeRemove(node, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
             for (var i = 0; i < toBeRemoved.Length; i++)
-	            RemoveNode(toBeRemoved[i], treeLeft, treeRight, treeParent, treePrevious, treeNext, treeRed, ref root);
+	            TreeRemove(toBeRemoved[i], ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
 
-            CheckCircle(prev, treeArc, treePrevious, treeNext, arcs, sites, events, ref eventsCount, ref eventIdSeq);
-            CheckCircle(next, treeArc, treePrevious, treeNext, arcs, sites, events, ref eventsCount, ref eventIdSeq);
+            CheckCircle(prev, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+            CheckCircle(next, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
 		}
 
 		private static float LeftBreakpoint(
 			int node,
-			NativeArray<int> treeArc,
-			NativeArray<int> treePrevious,
-			NativeList<Arc> arcs,
-			NativeArray<VSite> sites,
+			ref NativeArray<int> treeArc,
+			ref NativeArray<int> treePrevious,
+			ref NativeList<Arc> arcs,
+			ref NativeArray<VSite> sites,
 			float directrix)
 		{
 			var leftNode = treePrevious[node];
@@ -392,10 +392,10 @@ namespace Voronoi.Handlers
 
 		private static float RightBreakpoint(
 			int node, 
-			NativeArray<int> treeArc,
-			NativeArray<int> treeNext,
-			NativeList<Arc> arcs,
-			NativeArray<VSite> sites, 
+			ref NativeArray<int> treeArc,
+			ref NativeArray<int> treeNext,
+			ref NativeList<Arc> arcs,
+			ref NativeArray<VSite> sites, 
 			float directrix)
 		{
 			var rightNode = treeNext[node];
@@ -415,12 +415,12 @@ namespace Voronoi.Handlers
 
 		private static void CheckCircle(
 			int node,
-			NativeArray<int> treeArc,
-			NativeArray<int> treePrevious,
-			NativeArray<int> treeNext,
-			NativeList<Arc> arcs,
-			NativeArray<VSite> sites,
-			NativeArray<FortuneEvent> events,
+			ref NativeArray<int> treeArc,
+			ref NativeArray<int> treePrevious,
+			ref NativeArray<int> treeNext,
+			ref NativeList<Arc> arcs,
+			ref NativeArray<VSite> sites,
+			ref NativeArray<FortuneEvent> events,
 			ref int eventsCount,
 			ref int eventIdSeq)
 		{
@@ -477,13 +477,13 @@ namespace Voronoi.Handlers
 			var arc = arcs[treeArc[node]];
 			arc.Event = circleEvent;
 			arcs[treeArc[node]] = arc;
-			EventInsert(circleEvent, events, ref eventsCount);
+			EventInsert(circleEvent, ref events, ref eventsCount);
 		}
 
 
 		private static readonly float2 Float2Min = new float2(float.MinValue, float.MinValue);
 
-		private static void AddEdge(VEdge edge, NativeList<VEdge> edges, NativeList<float2> edgeEnds)
+		private static void AddEdge(VEdge edge, ref NativeList<VEdge> edges, ref NativeList<float2> edgeEnds)
 		{
 			edges.Add(edge);
 			edgeEnds.Add(Float2Min);

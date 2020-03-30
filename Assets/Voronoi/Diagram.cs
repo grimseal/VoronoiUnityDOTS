@@ -25,6 +25,7 @@ namespace Voronoi
 			vSites.Sort(new FortuneSiteComparer());
 			
 			var job = FortunesAlgorithm.CreateJob(vSites);
+			// job.Execute();
 			job.Run();
 
 			Edges = job.Edges.ToArray();

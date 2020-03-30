@@ -11,16 +11,9 @@ namespace Voronoi.Structures
 		public readonly float2 End;
 		public readonly int Left;
 		public readonly int Right;
-		
-		// internal float SlopeRise;
-		// internal float SlopeRun;
-		//
-		// internal float? Slope;
-		// internal float? Intercept;
-
 		public readonly int Neighbor;
 
-		public VEdge(int index, float2 startPoint, int leftSite, int rightSite, NativeHashMap<int, int> sitesMap)
+		public VEdge(int index, float2 startPoint, int leftSite, int rightSite, ref NativeHashMap<int, int> sitesMap)
 		{
 			Index = index;
 			Start = startPoint;
@@ -30,7 +23,7 @@ namespace Voronoi.Structures
 			Neighbor = -1;
 		}
 
-		public VEdge(int index, float2 startPoint, int leftSite, int rightSite, int neighbor, NativeHashMap<int, int> sitesMap)
+		public VEdge(int index, float2 startPoint, int leftSite, int rightSite, int neighbor, ref NativeHashMap<int, int> sitesMap)
 		{
 			Index = index;
 			Start = startPoint;

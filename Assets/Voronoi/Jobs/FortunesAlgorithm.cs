@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
 using Voronoi.Helpers;
 using Voronoi.Structures;
 using static Voronoi.Handlers.BeachLine;
@@ -21,15 +22,12 @@ namespace Voronoi.Jobs
 		public void Execute()
 		{
 			var eventsCount = 0;
-			var eventIdSeq = 0;
-			
-			var events = new NativeArray<FortuneEvent>(Sites.Length * 2, Allocator.Temp);
-			var deleted = new NativeHashMap<int, byte>(Sites.Length * 2, Allocator.Temp);
-			var beachSections = new NativeList<Arc>(Sites.Length * 2, Allocator.Temp);
+			int eventIdSeq = 0;
+
 			var edgesEnds = new NativeList<float2>(Edges.Capacity, Allocator.Temp);
-
-			var capacity = beachSections.Capacity;
-
+			var treeCount = 0;
+			var rbTreeRoot = -1;
+			var capacity = Sites.Length * 2;
 			var treeArc = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeLeft = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeRight = new NativeArray<int>(capacity, Allocator.Temp); 
@@ -37,15 +35,18 @@ namespace Voronoi.Jobs
 			var treePrevious = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeNext = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeRed = new NativeArray<bool>(capacity, Allocator.Temp);
-			var treeCount = 0;
-			var rbTreeRoot = -1;
+			var eventsLength = (int) (Sites.Length * 1.05f);
+			var events = new NativeArray<FortuneEvent>(eventsLength, Allocator.Temp);
+			var beachSections = new NativeList<Arc>(capacity, Allocator.Temp);
+			var deletedCapacity = math.ceilpow2((int) (Sites.Length * 0.1f));
+			var deleted = new NativeHashMap<int, byte>(deletedCapacity, Allocator.Temp);
 
 			for (var i = 0; i < Sites.Length; i++)
 			{
 				var site = Sites[i];
 				SiteIdIndexes[site.Id] = i;
 				SiteIndexIds[i] = site.Id;
-				EventInsert(new FortuneEvent(ref eventIdSeq, i, site.X, site.Y), events, ref eventsCount);
+				EventInsert(new FortuneEvent(ref eventIdSeq, i, site.X, site.Y), ref events, ref eventsCount);
 			}
 
 			for (var i = 0; i < capacity; i++)
@@ -60,18 +61,18 @@ namespace Voronoi.Jobs
 
 			while (eventsCount != 0)
 			{
-				var fEvent = EventPop(events, ref eventsCount);
-				if (fEvent.Type == FortuneEvent.EventType.Site)
-					AddBeachArc(fEvent, Sites, SiteIndexIds, Edges, edgesEnds, beachSections,
-						events, deleted, ref eventsCount, ref eventIdSeq, 
-						treeArc, treeLeft, treeRight, treeParent, treePrevious, treeNext, treeRed, 
+				var fEvent = EventPop(ref events, ref eventsCount);
+				if (fEvent.IsSiteEvent)
+					AddBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds, ref beachSections,
+						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
+						ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
 						ref treeCount, ref rbTreeRoot);
 				else
 				{
 					if (deleted.ContainsKey(fEvent.Id)) deleted.Remove(fEvent.Id);
-					else RemoveBeachArc(fEvent, Sites, SiteIndexIds, Edges, edgesEnds, beachSections,
-						events, deleted, ref eventsCount, ref eventIdSeq, 
-						treeArc, treeLeft, treeRight, treeParent, treePrevious, treeNext, treeRed, 
+					else RemoveBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds, ref beachSections,
+						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
+						ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
 						ref treeCount, ref rbTreeRoot);
 				}
 			}
@@ -86,15 +87,15 @@ namespace Voronoi.Jobs
 				if (n < 0)
 				{
 					edge = IsNotSet(edgesEnds[i]) ?
-						new VEdge(newIndex, Edges[i].Start, BuildRayEnd(i, temp), Edges[i].Left, Edges[i].Right) :
+						new VEdge(newIndex, Edges[i].Start, BuildRayEnd(i, ref temp), Edges[i].Left, Edges[i].Right) :
 						new VEdge(newIndex, Edges[i].Start, edgesEnds[i], Edges[i].Left, Edges[i].Right);
 				}
 				else
 				{
 					if (IsNotSet(edgesEnds[i]))
-						edge = new VEdge(newIndex, edgesEnds[n], BuildRayEnd(i, temp), Edges[i].Left, Edges[i].Right);
+						edge = new VEdge(newIndex, edgesEnds[n], BuildRayEnd(i, ref temp), Edges[i].Left, Edges[i].Right);
 					else if (IsNotSet(edgesEnds[n]))
-						edge = new VEdge(newIndex, edgesEnds[i], BuildRayEnd(n, temp), Edges[i].Left, Edges[i].Right);
+						edge = new VEdge(newIndex, edgesEnds[i], BuildRayEnd(n, ref temp), Edges[i].Left, Edges[i].Right);
 					else
 						edge = new VEdge(newIndex, edgesEnds[i], edgesEnds[n], Edges[i].Left, Edges[i].Right);
 					i++;
@@ -104,8 +105,10 @@ namespace Voronoi.Jobs
 				Regions.Add(edge.Right, edge);
 				newIndex++;
 			}
+			Debug.Log(Edges.Length);
 			Edges.Clear();
 			Edges.AddRange(newEdges);
+			Debug.Log(Edges.Length);
 		}
 
 		public void Dispose()
@@ -119,7 +122,7 @@ namespace Voronoi.Jobs
 		
 		private static readonly float Max = math.sqrt(math.sqrt(float.MaxValue));
 
-		private float2 BuildRayEnd(int index, NativeList<float2> candidates)
+		private float2 BuildRayEnd(int index, ref NativeList<float2> candidates)
 		{
 			var l = SiteIdIndexes[Edges[index].Left];
 			var r = SiteIdIndexes[Edges[index].Right];
