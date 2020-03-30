@@ -4,21 +4,21 @@ namespace Voronoi.Handlers
 {
 	public struct RedBlackTree
 	{
-		public static int TreeInsert(
+		public static int InsertTreeNode(
 			int node,
-			int value,
-			ref NativeArray<int> treeValue,
+			int arc,
+			ref NativeArray<int> treeArc,
 			ref NativeArray<int> treeLeft,
 			ref NativeArray<int> treeRight,
 			ref NativeArray<int> treeParent,
 			ref NativeArray<int> treePrevious,
 			ref NativeArray<int> treeNext,
-			ref NativeArray<bool> treeColor,
+			ref NativeArray<bool> treeRed,
 			ref int treeCount,
 			ref int root)
 		{
 			var successor = treeCount;
-			treeValue[successor] = value;
+			treeArc[successor] = arc;
 			treeCount++;
 
             int parent;
@@ -35,15 +35,7 @@ namespace Voronoi.Handlers
                 //insert successor into the tree
                 if (treeRight[node] > -1)
                 {
-	                int node1 = treeRight[node];
-	                if (node1 < 0) node = -1;
-	                else
-	                {
-		                while (treeLeft[node1] > -1)
-			                node1 = treeLeft[node1];
-		                node = node1;
-	                }
-
+	                node = GetFirst(treeRight[node], ref treeLeft);
 	                treeLeft[node] = successor;
                 }
                 else
@@ -56,15 +48,7 @@ namespace Voronoi.Handlers
             {
                 //if the node is null, successor must be inserted
                 //into the left most part of the tree
-                int node1 = root;
-                if (node1 < 0) node = -1;
-                else
-                {
-	                while (treeLeft[node1] > -1)
-		                node1 = treeLeft[node1];
-	                node = node1;
-                }
-
+                node = GetFirst(root, ref treeLeft);
                 //successor.Previous = null;
                 treeNext[successor] = node;
                 treePrevious[node] = successor;
@@ -81,150 +65,76 @@ namespace Voronoi.Handlers
 
             //successor.Left = successor.Right = null;
             treeParent[successor] = parent;
-            treeColor[successor] = true;
+            treeRed[successor] = true;
 
             //the magic of the red black tree
             int grandma;
             int aunt;
             node = successor;
-            while (parent > -1 && treeColor[parent])
+            while (parent > -1 && treeRed[parent])
             {
 	            grandma = treeParent[parent];
                 if (parent == treeLeft[grandma])
                 {
                     aunt = treeRight[grandma];
-                    if (aunt > -1 && treeColor[aunt])
+                    if (aunt > -1 && treeRed[aunt])
                     {
-	                    treeColor[parent] = false;
-	                    treeColor[aunt] = false;
-	                    treeColor[grandma] = true;
+	                    treeRed[parent] = false;
+	                    treeRed[aunt] = false;
+	                    treeRed[grandma] = true;
                         node = grandma;
                     }
                     else
                     {
                         if (node == treeRight[parent])
                         {
-	                        var p1 = parent;
-	                        var q1 = treeRight[parent];
-	                        var parent2 = treeParent[p1];
-
-	                        if (parent2 > -1)
-	                        {
-		                        if (treeLeft[parent2] == p1)
-			                        treeLeft[parent2] = q1;
-		                        else
-			                        treeRight[parent2] = q1;
-	                        }
-	                        else
-		                        root = q1;
-	                        treeParent[q1] = parent2;
-	                        treeParent[p1] = q1;
-	                        treeRight[p1] = treeLeft[q1];
-	                        if (treeRight[p1] > -1)
-		                        treeParent[treeRight[p1]] = p1;
-	                        treeLeft[q1] = p1;
-	                        node = parent;
+                            RotateLeft(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
+                            node = parent;
                             parent = treeParent[node];
                         }
-                        treeColor[parent] = false;
-                        treeColor[grandma] = true;
-                        var p = grandma;
-                        var q = treeLeft[grandma];
-                        var parent1 = treeParent[p];
-
-                        if (parent1 > -1)
-                        {
-	                        if (treeLeft[parent1] == p) 
-		                        treeLeft[parent1] = q;
-	                        else
-		                        treeRight[parent1] = q;
-                        }
-                        else
-	                        root = q;
-
-                        treeParent[q] = parent1;
-                        treeParent[p] = q;
-                        treeLeft[p] = treeRight[q];
-                        if (treeLeft[p] > -1)
-	                        treeParent[treeLeft[p]] = p;
-                        treeRight[q] = p;
+                        treeRed[parent] = false;
+                        treeRed[grandma] = true;
+                        RotateRight(grandma, ref treeLeft, ref treeRight, ref treeParent, ref root);
                     }
                 }
                 else
                 {
                     aunt = treeLeft[grandma];
-                    if (aunt > -1 && treeColor[aunt])
+                    if (aunt > -1 && treeRed[aunt])
                     {
-	                    treeColor[parent] = false;
-	                    treeColor[aunt] = false;
-	                    treeColor[grandma] = true;
+	                    treeRed[parent] = false;
+	                    treeRed[aunt] = false;
+	                    treeRed[grandma] = true;
 	                    node = grandma;
                     }
                     else
                     {
                         if (node == treeLeft[parent])
                         {
-	                        var p = parent;
-	                        var q = treeLeft[parent];
-	                        var parent1 = treeParent[p];
-
-	                        if (parent1 > -1)
-	                        {
-		                        if (treeLeft[parent1] == p) 
-			                        treeLeft[parent1] = q;
-		                        else
-			                        treeRight[parent1] = q;
-	                        }
-	                        else
-		                        root = q;
-
-	                        treeParent[q] = parent1;
-	                        treeParent[p] = q;
-	                        treeLeft[p] = treeRight[q];
-	                        if (treeLeft[p] > -1)
-		                        treeParent[treeLeft[p]] = p;
-	                        treeRight[q] = p;
-	                        node = parent;
+                            RotateRight(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
+                            node = parent;
                             parent = treeParent[node];
                         }
                         
-                        treeColor[parent] = false;
-                        treeColor[grandma] = true;
-                        var p1 = grandma;
-                        var q1 = treeRight[grandma];
-                        var parent2 = treeParent[p1];
-
-                        if (parent2 > -1)
-                        {
-	                        if (treeLeft[parent2] == p1)
-		                        treeLeft[parent2] = q1;
-	                        else
-		                        treeRight[parent2] = q1;
-                        }
-                        else
-	                        root = q1;
-                        treeParent[q1] = parent2;
-                        treeParent[p1] = q1;
-                        treeRight[p1] = treeLeft[q1];
-                        if (treeRight[p1] > -1)
-	                        treeParent[treeRight[p1]] = p1;
-                        treeLeft[q1] = p1;
+                        treeRed[parent] = false;
+                        treeRed[grandma] = true;
+                        RotateLeft(grandma, ref treeLeft, ref treeRight, ref treeParent, ref root);
                     }
                 }
                 parent = treeParent[node];
             }
-            treeColor[root] = false;
+            treeRed[root] = false;
             return successor;
 		}
 
-		public static void TreeRemove(
+		public static void RemoveTreeNode(
 			int node,
 			ref NativeArray<int> treeLeft, 
 			ref NativeArray<int> treeRight, 
 			ref NativeArray<int> treeParent, 
 			ref NativeArray<int> treePrevious, 
 			ref NativeArray<int> treeNext, 
-			ref NativeArray<bool> treeColor,
+			ref NativeArray<bool> treeRed,
 			ref int root)
 		{
 			//fix up linked list structure
@@ -245,16 +155,7 @@ namespace Voronoi.Handlers
             else if (right < 0)
                 next = left;
             else
-            {
-	            int node1 = right;
-	            if (node1 < 0) next = -1;
-	            else
-	            {
-		            while (treeLeft[node1] > -1)
-			            node1 = treeLeft[node1];
-		            next = node1;
-	            }
-            }
+                next = GetFirst(right, ref treeLeft);
 
             //fix up the parent relation
             if (parent > -1)
@@ -272,8 +173,8 @@ namespace Voronoi.Handlers
             bool red;
             if (left > -1 && right > -1)
             {
-                red = treeColor[next];
-                treeColor[next] = treeColor[node];
+                red = treeRed[next];
+                treeRed[next] = treeRed[node];
                 treeLeft[next] = left;
                 treeParent[left] = next;
 
@@ -299,7 +200,7 @@ namespace Voronoi.Handlers
             }
             else
             {
-                red = treeColor[node];
+                red = treeRed[node];
                 node = next;
             }
 
@@ -313,9 +214,9 @@ namespace Voronoi.Handlers
                 return;
             }
 
-            if (node > -1 && treeColor[node])
+            if (node > -1 && treeRed[node])
             {
-	            treeColor[node] = false;
+	            treeRed[node] = false;
                 return;
             }
 
@@ -332,82 +233,27 @@ namespace Voronoi.Handlers
                 if (node == treeLeft[parent])
                 {
                     sibling = treeRight[parent];
-                    if (treeColor[sibling])
+                    if (treeRed[sibling])
                     {
-	                    treeColor[sibling] = false;
-	                    treeColor[parent] = true;
-	                    var p = parent;
-	                    var q = treeRight[parent];
-	                    var parent1 = treeParent[p];
-
-	                    if (parent1 > -1)
-	                    {
-		                    if (treeLeft[parent1] == p)
-			                    treeLeft[parent1] = q;
-		                    else
-			                    treeRight[parent1] = q;
-	                    }
-	                    else
-		                    root = q;
-	                    treeParent[q] = parent1;
-	                    treeParent[p] = q;
-	                    treeRight[p] = treeLeft[q];
-	                    if (treeRight[p] > -1)
-		                    treeParent[treeRight[p]] = p;
-	                    treeLeft[q] = p;
-	                    sibling = treeRight[parent];
+	                    treeRed[sibling] = false;
+	                    treeRed[parent] = true;
+                        RotateLeft(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
+                        sibling = treeRight[parent];
                     }
-                    if (treeLeft[sibling] > -1 && treeColor[treeLeft[sibling]] || 
-                        treeRight[sibling] > -1 && treeColor[treeRight[sibling]])
+                    if (treeLeft[sibling] > -1 && treeRed[treeLeft[sibling]] || 
+                        treeRight[sibling] > -1 && treeRed[treeRight[sibling]])
                     {
                         //pretty sure this can be sibling.Left!= null && sibling.Left.Red
-                        if (treeRight[sibling] < 0 || !treeColor[treeRight[sibling]])
+                        if (treeRight[sibling] < 0 || !treeRed[treeRight[sibling]])
                         {
-	                        treeColor[treeLeft[sibling]] = false;
-	                        treeColor[sibling] = true;
-	                        var p = sibling;
-	                        var q = treeLeft[sibling];
-	                        var parent1 = treeParent[p];
-
-	                        if (parent1 > -1)
-	                        {
-		                        if (treeLeft[parent1] == p) 
-			                        treeLeft[parent1] = q;
-		                        else
-			                        treeRight[parent1] = q;
-	                        }
-	                        else
-		                        root = q;
-
-	                        treeParent[q] = parent1;
-	                        treeParent[p] = q;
-	                        treeLeft[p] = treeRight[q];
-	                        if (treeLeft[p] > -1)
-		                        treeParent[treeLeft[p]] = p;
-	                        treeRight[q] = p;
-	                        sibling = treeRight[parent];
+	                        treeRed[treeLeft[sibling]] = false;
+	                        treeRed[sibling] = true;
+	                        RotateRight(sibling, ref treeLeft, ref treeRight, ref treeParent, ref root);
+                            sibling = treeRight[parent];
                         }
-                        treeColor[sibling] = treeColor[parent];
-                        treeColor[parent] = treeColor[treeRight[sibling]] = false;
-                        var p1 = parent;
-                        var q1 = treeRight[parent];
-                        var parent2 = treeParent[p1];
-
-                        if (parent2 > -1)
-                        {
-	                        if (treeLeft[parent2] == p1)
-		                        treeLeft[parent2] = q1;
-	                        else
-		                        treeRight[parent2] = q1;
-                        }
-                        else
-	                        root = q1;
-                        treeParent[q1] = parent2;
-                        treeParent[p1] = q1;
-                        treeRight[p1] = treeLeft[q1];
-                        if (treeRight[p1] > -1)
-	                        treeParent[treeRight[p1]] = p1;
-                        treeLeft[q1] = p1;
+                        treeRed[sibling] = treeRed[parent];
+                        treeRed[parent] = treeRed[treeRight[sibling]] = false;
+                        RotateLeft(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
                         node = root;
                         break;
                     }
@@ -415,93 +261,109 @@ namespace Voronoi.Handlers
                 else
                 {
                     sibling = treeLeft[parent];
-                    if (treeColor[sibling])
+                    if (treeRed[sibling])
                     {
-	                    treeColor[sibling] = false;
-	                    treeColor[parent] = true;
-	                    var p = parent;
-	                    var q = treeLeft[parent];
-	                    var parent1 = treeParent[p];
-
-	                    if (parent1 > -1)
-	                    {
-		                    if (treeLeft[parent1] == p) 
-			                    treeLeft[parent1] = q;
-		                    else
-			                    treeRight[parent1] = q;
-	                    }
-	                    else
-		                    root = q;
-
-	                    treeParent[q] = parent1;
-	                    treeParent[p] = q;
-	                    treeLeft[p] = treeRight[q];
-	                    if (treeLeft[p] > -1)
-		                    treeParent[treeLeft[p]] = p;
-	                    treeRight[q] = p;
-	                    sibling = treeLeft[parent];
+	                    treeRed[sibling] = false;
+	                    treeRed[parent] = true;
+                        RotateRight(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
+                        sibling = treeLeft[parent];
                     }
-                    if (treeLeft[sibling] > -1 && treeColor[treeLeft[sibling]] ||
-                        treeRight[sibling] > -1 && treeColor[treeRight[sibling]])
+                    if (treeLeft[sibling] > -1 && treeRed[treeLeft[sibling]] ||
+                        treeRight[sibling] > -1 && treeRed[treeRight[sibling]])
                     {
-                        if (treeLeft[sibling] < 0 || !treeColor[treeLeft[sibling]])
+                        if (treeLeft[sibling] < 0 || !treeRed[treeLeft[sibling]])
                         {
-	                        treeColor[treeRight[sibling]] = false;
-	                        treeColor[sibling] = true;
-	                        var p1 = sibling;
-	                        var q1 = treeRight[sibling];
-	                        var parent2 = treeParent[p1];
-
-	                        if (parent2 > -1)
-	                        {
-		                        if (treeLeft[parent2] == p1)
-			                        treeLeft[parent2] = q1;
-		                        else
-			                        treeRight[parent2] = q1;
-	                        }
-	                        else
-		                        root = q1;
-	                        treeParent[q1] = parent2;
-	                        treeParent[p1] = q1;
-	                        treeRight[p1] = treeLeft[q1];
-	                        if (treeRight[p1] > -1)
-		                        treeParent[treeRight[p1]] = p1;
-	                        treeLeft[q1] = p1;
-	                        sibling = treeLeft[parent];
+	                        treeRed[treeRight[sibling]] = false;
+	                        treeRed[sibling] = true;
+	                        RotateLeft(sibling, ref treeLeft, ref treeRight, ref treeParent, ref root);
+                            sibling = treeLeft[parent];
                         }
-                        treeColor[sibling] = treeColor[parent];
-                        treeColor[parent] = treeColor[treeLeft[sibling]] = false;
-                        var p = parent;
-                        var q = treeLeft[parent];
-                        var parent1 = treeParent[p];
-
-                        if (parent1 > -1)
-                        {
-	                        if (treeLeft[parent1] == p) 
-		                        treeLeft[parent1] = q;
-	                        else
-		                        treeRight[parent1] = q;
-                        }
-                        else
-	                        root = q;
-
-                        treeParent[q] = parent1;
-                        treeParent[p] = q;
-                        treeLeft[p] = treeRight[q];
-                        if (treeLeft[p] > -1)
-	                        treeParent[treeLeft[p]] = p;
-                        treeRight[q] = p;
+                        treeRed[sibling] = treeRed[parent];
+                        treeRed[parent] = treeRed[treeLeft[sibling]] = false;
+                        RotateRight(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
                         node = root;
                         break;
                     }
                 }
-                treeColor[sibling] = true;
+                treeRed[sibling] = true;
                 node = parent;
                 parent = treeParent[parent];
-            } while (!treeColor[node]);
+            } while (!treeRed[node]);
 
             if (node > -1)
-	            treeColor[node] = false;
+	            treeRed[node] = false;
+		}
+
+		private static int GetFirst(int node, ref NativeArray<int> treeLeft)
+		{
+			if (node < 0) return -1;
+			while (treeLeft[node] > -1)
+				node = treeLeft[node];
+			return node;
+		}
+
+		private static int GetLast(int node, ref NativeArray<int> treeRight)
+		{
+			if (node < 0) return -1;
+			while (treeRight[node] > -1) node = treeRight[node];
+			return node;
+		}
+
+		private static void RotateLeft(
+			int node, 
+			ref NativeArray<int> treeLeft,
+			ref NativeArray<int> treeRight,
+			ref NativeArray<int> treeParent,
+			ref int root)
+		{
+			var p = node;
+			var q = treeRight[node];
+			var parent = treeParent[p];
+
+			if (parent > -1)
+			{
+				if (treeLeft[parent] == p)
+					treeLeft[parent] = q;
+				else
+					treeRight[parent] = q;
+			}
+			else
+				root = q;
+			treeParent[q] = parent;
+			treeParent[p] = q;
+			treeRight[p] = treeLeft[q];
+			if (treeRight[p] > -1)
+				treeParent[treeRight[p]] = p;
+			treeLeft[q] = p;
+		}
+
+		private static void RotateRight(
+			int node,
+			ref NativeArray<int> treeLeft,
+			ref NativeArray<int> treeRight,
+			ref NativeArray<int> treeParent,
+			ref int root)
+		{
+			var p = node;
+			var q = treeLeft[node];
+			var parent = treeParent[p];
+
+			if (parent > -1)
+			{
+				if (treeLeft[parent] == p) 
+					treeLeft[parent] = q;
+				else
+					treeRight[parent] = q;
+			}
+			else
+				root = q;
+
+			treeParent[q] = parent;
+			treeParent[p] = q;
+			treeLeft[p] = treeRight[q];
+			if (treeLeft[p] > -1)
+				treeParent[treeLeft[p]] = p;
+			treeRight[q] = p;
 		}
 	}
 }

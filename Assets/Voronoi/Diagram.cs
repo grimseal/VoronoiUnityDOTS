@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
 using Voronoi.Jobs;
 using Voronoi.Structures;
 
@@ -25,12 +26,15 @@ namespace Voronoi
 			vSites.Sort(new FortuneSiteComparer());
 			
 			var job = FortunesAlgorithm.CreateJob(vSites);
-			// job.Execute();
+			Debug.Log($"initial edges capacity {job.Edges.Capacity}");
 			job.Run();
 
-			Edges = job.Edges.ToArray();
-			Regions = new VEdge[Sites.Length][];
+			Edges = new VEdge[job.EdgesCount[0]];
+			NativeArray<VEdge>.Copy(job.Edges, Edges, Edges.Length);
 
+			Debug.Log($"result edges count {Edges.Length}");
+			
+			Regions = new VEdge[Sites.Length][];
 			for (var i = 0; i < Sites.Length; i++)
 			{
 				var region = job.Regions.GetValuesForKey(i);

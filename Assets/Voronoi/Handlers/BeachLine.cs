@@ -20,13 +20,13 @@ namespace Voronoi.Handlers
 			ref NativeHashMap<int, byte> deleted,
 			ref int eventsCount,
 			ref int eventIdSeq,
-			ref NativeArray<int> treeArc, 
+			ref NativeArray<int> treeValue, 
 			ref NativeArray<int> treeLeft, 
 			ref NativeArray<int> treeRight, 
 			ref NativeArray<int> treeParent, 
 			ref NativeArray<int> treePrevious, 
 			ref NativeArray<int> treeNext, 
-			ref NativeArray<bool> treeRed,
+			ref NativeArray<bool> treeColor,
 			ref int treeCount,
 			ref int root) 
 		{
@@ -42,7 +42,7 @@ namespace Voronoi.Handlers
             //find the parabola(s) above this site
             while (node > -1 && leftNode < 0 && rightNode < 0)
             {
-                var distanceLeft = LeftBreakpoint(node, ref treeArc, ref treePrevious, ref arcs, ref sites, directrix) - x;
+                var distanceLeft = LeftBreakpoint(node, ref treeValue, ref treePrevious, ref arcs, ref sites, directrix) - x;
                 if (distanceLeft > 0)
                 {
                     //the new site is before the left breakpoint
@@ -57,7 +57,7 @@ namespace Voronoi.Handlers
                     continue;
                 }
 
-                var distanceRight = x - RightBreakpoint(node, ref treeArc, ref treeNext, ref arcs, ref sites, directrix);
+                var distanceRight = x - RightBreakpoint(node, ref treeValue, ref treeNext, ref arcs, ref sites, directrix);
                 if (distanceRight > 0)
                 {
                     //the new site is after the right breakpoint
@@ -95,12 +95,12 @@ namespace Voronoi.Handlers
 
             //our goal is to insert the new node between the
             //left and right sections
-            arcs.Add(new Arc(arcs.Length, site));
+            arcs.Add(new Arc(site));
 
             //left section could be null, in which case this node is the first
             //in the tree
-            var newNode = TreeInsert(leftNode, arcs.Length - 1,
-	            ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed,
+            var newNode = InsertTreeNode(leftNode, arcs.Length - 1,
+	            ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeColor,
 	            ref treeCount, ref root);
 
             //new beach section is the first beach section to be added
@@ -118,28 +118,29 @@ namespace Voronoi.Handlers
                 //if the arc has a circle event, it was a false alarm.
                 //remove it
                 {
-	                var leftNodeArc = arcs[treeArc[leftNode]];
+	                var leftNodeArcIndex = treeValue[leftNode];
+	                var leftNodeArc = arcs[leftNodeArcIndex];
 	                if (leftNodeArc.Event.Exists)
 	                {
 		                deleted.Add(leftNodeArc.Event.Id, 1);
 		                leftNodeArc.Event = new FortuneEvent();
-		                arcs[leftNodeArc.Index] = leftNodeArc;
+		                arcs[leftNodeArcIndex] = leftNodeArc;
 	                }
                 }
 
                 //we leave the existing arc as the left section in the tree
                 //however we need to insert the right section defined by the arc
                 var copy = arcs.Length;
-                arcs.Add(new Arc(copy, arcs[treeArc[leftNode]].Site));
-                rightNode = TreeInsert(newNode, copy,
-	                ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed,
+                arcs.AddNoResize(new Arc(arcs[treeValue[leftNode]].Site));
+                rightNode = InsertTreeNode(newNode, copy,
+	                ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeColor,
 	                ref treeCount, ref root);
 
                 //grab the projection of this site onto the parabola
                 float y;
                 int leftNodeSite;
                 {
-	                leftNodeSite = arcs[treeArc[leftNode]].Site;
+	                leftNodeSite = arcs[treeValue[leftNode]].Site;
 	                var nodeArcSite = sites[leftNodeSite];
 	                y = VMath.EvalParabola(nodeArcSite.X, nodeArcSite.Y, directrix, x);
                 }
@@ -148,24 +149,26 @@ namespace Voronoi.Handlers
                 //create the two half edges corresponding to this intersection
                 var leftEdge = edges.Length;
                 var rightEdge = leftEdge + 1;
-                AddEdge(new VEdge(leftEdge, intersection, site, leftNodeSite, rightEdge, ref sitesMap), ref edges, ref edgesEnds);
-                AddEdge(new VEdge(rightEdge, intersection, leftNodeSite, site, ref sitesMap), ref edges, ref edgesEnds);
+                AddEdge(new VEdge(intersection, site, leftNodeSite, rightEdge, ref sitesMap), ref edges, ref edgesEnds);
+                AddEdge(new VEdge(intersection, leftNodeSite, site, ref sitesMap), ref edges, ref edgesEnds);
 
                 //store the left edge on each arc section
                 {
-	                var arc = arcs[treeArc[newNode]];
+	                var arcIndex = treeValue[newNode];
+	                var arc = arcs[arcIndex];
 	                arc.Edge = leftEdge;
-	                arcs[arc.Index] = arc;
+	                arcs[arcIndex] = arc;
                 }
                 {
-	                var arc = arcs[treeArc[rightNode]];
+	                var arcIndex = treeValue[rightNode];
+	                var arc = arcs[arcIndex];
 	                arc.Edge = rightEdge;
-	                arcs[arc.Index] = arc;
+	                arcs[arcIndex] = arc;
                 }
 
                 //create circle events
-                CheckCircle(leftNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
-                CheckCircle(rightNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(leftNode, ref treeValue, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(rightNode, ref treeValue, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
             }
 
             //site is the last beach section on the beach line
@@ -178,18 +181,19 @@ namespace Voronoi.Handlers
 	            var newEdge = edges.Length;
 	            var infEdge = newEdge + 1;
 
-	            var leftNodeSite = arcs[treeArc[leftNode]].Site;
+	            var leftNodeSite = arcs[treeValue[leftNode]].Site;
 	            var start = new float2((sites[leftNodeSite].X + sites[site].X) / 2, float.MinValue);
 
 	            // new edge
-	            AddEdge(new VEdge(newEdge, start, site, leftNodeSite, infEdge, ref sitesMap), ref edges, ref edgesEnds);
+	            AddEdge(new VEdge(start, site, leftNodeSite, infEdge, ref sitesMap), ref edges, ref edgesEnds);
 	            // inf edge	            
-	            AddEdge(new VEdge(infEdge, start, leftNodeSite, site, ref sitesMap), ref edges, ref edgesEnds);
+	            AddEdge(new VEdge(start, leftNodeSite, site, ref sitesMap), ref edges, ref edgesEnds);
 
 	            {
-		            var newNodeArc = arcs[treeArc[newNode]];
+		            var arcIndex = treeValue[newNode];
+		            var newNodeArc = arcs[arcIndex];
 		            newNodeArc.Edge = newEdge;
-		            arcs[newNodeArc.Index] = newNodeArc;
+		            arcs[arcIndex] = newNodeArc;
 	            }
 
 	            //cant check circles since they are colinear
@@ -199,20 +203,22 @@ namespace Voronoi.Handlers
             else if (leftNode > -1 && leftNode != rightNode)
             {
 	            //remove false alarms
-                var leftNodeArc = arcs[treeArc[leftNode]];
+	            var leftNodeArcIndex = treeValue[leftNode];
+                var leftNodeArc = arcs[leftNodeArcIndex];
                 if (leftNodeArc.Event.Exists)
                 {
                     deleted.Add(leftNodeArc.Event.Id, 1);
                     leftNodeArc.Event = new FortuneEvent();
-                    arcs[leftNodeArc.Index] = leftNodeArc;
+                    arcs[leftNodeArcIndex] = leftNodeArc;
                 }
 
-                var rightNodeArc = arcs[treeArc[rightNode]];
+                var rightNodeArcIndex = treeValue[rightNode];
+                var rightNodeArc = arcs[rightNodeArcIndex];
                 if (rightNodeArc.Event.Exists)
                 {
                     deleted.Add(rightNodeArc.Event.Id, 1);
                     rightNodeArc.Event = new FortuneEvent();
-                    arcs[rightNodeArc.Index] = rightNodeArc;
+                    arcs[rightNodeArcIndex] = rightNodeArc;
                 }
 
                 //the breakpoint will dissapear if we add this site
@@ -244,20 +250,21 @@ namespace Voronoi.Handlers
                 //next we create a two new edges
                 {
 	                var edge = edges.Length;
-	                AddEdge(new VEdge(edge, vertex, site, leftNodeArc.Site, ref sitesMap), ref edges, ref edgesEnds);
-	                var newNodeArc = arcs[treeArc[newNode]];
+	                AddEdge(new VEdge(vertex, site, leftNodeArc.Site, ref sitesMap), ref edges, ref edgesEnds);
+	                var arcIndex = treeValue[newNode];
+	                var newNodeArc = arcs[arcIndex];
 	                newNodeArc.Edge = edge;
-	                arcs[newNodeArc.Index] = newNodeArc;
+	                arcs[arcIndex] = newNodeArc;
                 }
                 {
 	                var edge = edges.Length;
-	                AddEdge(new VEdge(edge, vertex, rightNodeArc.Site, site, ref sitesMap), ref edges, ref edgesEnds);
+	                AddEdge(new VEdge(vertex, rightNodeArc.Site, site, ref sitesMap), ref edges, ref edgesEnds);
 	                rightNodeArc.Edge = edge;
-	                arcs[rightNodeArc.Index] = rightNodeArc;
+	                arcs[rightNodeArcIndex] = rightNodeArc;
                 }
 
-                CheckCircle(leftNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
-                CheckCircle(rightNode, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(leftNode, ref treeValue, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+                CheckCircle(rightNode, ref treeValue, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
             }
 		}
 
@@ -272,7 +279,7 @@ namespace Voronoi.Handlers
 			ref NativeHashMap<int, byte> deleted,
 			ref int eventsCount,
 			ref int eventIdSeq,
-			ref NativeArray<int> treeArc, 
+			ref NativeArray<int> treeValue, 
 			ref NativeArray<int> treeLeft, 
 			ref NativeArray<int> treeRight, 
 			ref NativeArray<int> treeParent, 
@@ -293,78 +300,82 @@ namespace Voronoi.Handlers
 
             //look left
             var prev = treePrevious[node];
-            var prevEvent = arcs[treeArc[prev]].Event;
+            var prevEvent = arcs[treeValue[prev]].Event;
             while (prevEvent.Exists && 
                    VMath.ApproxEqual(x - prevEvent.X, 0) && 
                    VMath.ApproxEqual(y - prevEvent.Y, 0))
             {
-                toBeRemoved.Add(prev);
+                toBeRemoved.AddNoResize(prev);
                 prev = treePrevious[prev];
-                prevEvent = arcs[treeArc[prev]].Event;
+                prevEvent = arcs[treeValue[prev]].Event;
             }
 
             var next = treeNext[node];
-            var nextEvent = arcs[treeArc[next]].Event;
+            var nextEvent = arcs[treeValue[next]].Event;
             while (nextEvent.Exists &&
                    VMath.ApproxEqual(x - nextEvent.X, 0) &&
                    VMath.ApproxEqual(y - nextEvent.Y, 0))
             {
-                toBeRemoved.Add(next);
+                toBeRemoved.AddNoResize(next);
                 next = treeNext[next];
-                nextEvent = arcs[treeArc[next]].Event;
+                nextEvent = arcs[treeValue[next]].Event;
             }
 
             {
-	            var nodeArc =  arcs[treeArc[node]];
+	            var arcIndex = treeValue[node];
+	            var nodeArc =  arcs[arcIndex];
 	            edgesEnds[nodeArc.Edge] = vertex;
-	            edgesEnds[arcs[treeArc[next]].Edge] = vertex;
+	            edgesEnds[arcs[treeValue[next]].Edge] = vertex;
 	            nodeArc.Event = new FortuneEvent();
-	            arcs[nodeArc.Index] = nodeArc;
+	            arcs[arcIndex] = nodeArc;
             }
 
             //odds are this double writes a few edges but this is clean...
             for (var i = 0; i < toBeRemoved.Length; i++)
             {
 	            var remove = toBeRemoved[i];
-	            var removeArc = arcs[treeArc[remove]];
+	            var arcIndex = treeValue[remove];
+	            var removeArc = arcs[arcIndex];
 	            edgesEnds[removeArc.Edge] = vertex;
-	            edgesEnds[arcs[treeArc[treeNext[remove]]].Edge] = vertex;
+	            edgesEnds[arcs[treeValue[treeNext[remove]]].Edge] = vertex;
 	            deleted.Add(removeArc.Event.Id, 1);
 	            removeArc.Event = new FortuneEvent();
-	            arcs[removeArc.Index] = removeArc;
+	            arcs[arcIndex] = removeArc;
             }
 
 
             //need to delete all upcoming circle events with this node
-            var prevArc = arcs[treeArc[prev]];
+            var prevArcIndex = treeValue[prev];
+            var prevArc = arcs[prevArcIndex];
             if (prevArc.Event.Exists)
             {
                 deleted.Add(prevArc.Event.Id, 1);
                 prevArc.Event = new FortuneEvent();
-                arcs[prevArc.Index] = prevArc; }
+                arcs[prevArcIndex] = prevArc; }
 
-            var nextArc =  arcs[treeArc[next]];
+            var nextArcIndex = treeValue[next];
+            var nextArc =  arcs[nextArcIndex];
             if (nextArc.Event.Exists)
             {
                 deleted.Add(nextArc.Event.Id, 1);
                 nextArc.Event = new FortuneEvent();
-                arcs[nextArc.Index] = nextArc;
+                arcs[nextArcIndex] = nextArc;
             }
 
 
             //create a new edge with start point at the vertex and assign it to next
             var newEdge = edges.Length;
-            AddEdge(new VEdge(newEdge, vertex, nextArc.Site, prevArc.Site, ref sitesMap), ref edges, ref edgesEnds);
+            AddEdge(new VEdge(vertex, nextArc.Site, prevArc.Site, ref sitesMap), ref edges, ref edgesEnds);
             nextArc.Edge = newEdge;
-            arcs[nextArc.Index] = nextArc;
+            arcs[nextArcIndex] = nextArc;
             
             //remove the sectionfrom the tree
-            TreeRemove(node, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
+            RemoveTreeNode(node, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
             for (var i = 0; i < toBeRemoved.Length; i++)
-	            TreeRemove(toBeRemoved[i], ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
+	            RemoveTreeNode(toBeRemoved[i], ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
 
-            CheckCircle(prev, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
-            CheckCircle(next, ref treeArc, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+            CheckCircle(prev, ref treeValue, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
+            CheckCircle(next, ref treeValue, ref treePrevious, ref treeNext, ref arcs, ref sites, ref events, ref eventsCount, ref eventIdSeq);
 		}
 
 		private static float LeftBreakpoint(
@@ -485,8 +496,8 @@ namespace Voronoi.Handlers
 
 		private static void AddEdge(VEdge edge, ref NativeList<VEdge> edges, ref NativeList<float2> edgeEnds)
 		{
-			edges.Add(edge);
-			edgeEnds.Add(Float2Min);
+			edges.AddNoResize(edge);
+			edgeEnds.AddNoResize(Float2Min);
 		}
 	}
 }

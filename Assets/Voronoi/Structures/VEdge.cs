@@ -5,17 +5,14 @@ namespace Voronoi.Structures
 {
 	public struct VEdge
 	{
-
-		public readonly int Index;
 		public readonly float2 Start;
 		public readonly float2 End;
 		public readonly int Left;
 		public readonly int Right;
 		public readonly int Neighbor;
 
-		public VEdge(int index, float2 startPoint, int leftSite, int rightSite, ref NativeHashMap<int, int> sitesMap)
+		public VEdge(float2 startPoint, int leftSite, int rightSite, ref NativeHashMap<int, int> sitesMap)
 		{
-			Index = index;
 			Start = startPoint;
 			End = float2.zero;
 			Left = sitesMap[leftSite];
@@ -23,9 +20,8 @@ namespace Voronoi.Structures
 			Neighbor = -1;
 		}
 
-		public VEdge(int index, float2 startPoint, int leftSite, int rightSite, int neighbor, ref NativeHashMap<int, int> sitesMap)
+		public VEdge(float2 startPoint, int leftSite, int rightSite, int neighbor, ref NativeHashMap<int, int> sitesMap)
 		{
-			Index = index;
 			Start = startPoint;
 			End = float2.zero;
 			Left = sitesMap[leftSite];
@@ -33,9 +29,8 @@ namespace Voronoi.Structures
 			Neighbor = neighbor;
 		}
 
-		public VEdge(int index, float2 start, float2 end, int left, int right)
+		public VEdge(float2 start, float2 end, int left, int right)
 		{
-			Index = index;
 			Start = start;
 			End = end;
 			Left = left;
@@ -43,9 +38,8 @@ namespace Voronoi.Structures
 			Neighbor = -1;
 		}
 
-		public VEdge(int index, VEdge edge)
+		public VEdge(VEdge edge)
 		{
-			Index = index;
 			Start = edge.Start;
 			End = edge.End;
 			Left = edge.Left;
@@ -80,6 +74,6 @@ namespace Voronoi.Structures
 			}
 		}
 		
-		public static VEdge Null = new VEdge(-1, float2.zero, float2.zero, -1, -1);
+		public static VEdge Null = new VEdge(float2.zero, float2.zero, -1, -1);
 	}
 }

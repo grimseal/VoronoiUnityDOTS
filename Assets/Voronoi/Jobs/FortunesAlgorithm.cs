@@ -15,6 +15,7 @@ namespace Voronoi.Jobs
 	{
 		public NativeArray<VSite> Sites;
 		public NativeList<VEdge> Edges;
+		public NativeArray<int> EdgesCount;
 		public NativeMultiHashMap<int, VEdge> Regions;
 		public NativeHashMap<int, int> SiteIdIndexes;
 		public NativeHashMap<int, int> SiteIndexIds;
@@ -25,10 +26,11 @@ namespace Voronoi.Jobs
 			int eventIdSeq = 0;
 
 			var edgesEnds = new NativeList<float2>(Edges.Capacity, Allocator.Temp);
+			
 			var treeCount = 0;
 			var rbTreeRoot = -1;
 			var capacity = Sites.Length * 2;
-			var treeArc = new NativeArray<int>(capacity, Allocator.Temp); 
+			var treeValue = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeLeft = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeRight = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeParent = new NativeArray<int>(capacity, Allocator.Temp); 
@@ -51,7 +53,7 @@ namespace Voronoi.Jobs
 
 			for (var i = 0; i < capacity; i++)
 			{
-				treeArc[i] = -1;
+				treeValue[i] = -1;
 				treeLeft[i] = -1;
 				treeRight[i] = -1;
 				treeParent[i] = -1;
@@ -63,22 +65,25 @@ namespace Voronoi.Jobs
 			{
 				var fEvent = EventPop(ref events, ref eventsCount);
 				if (fEvent.IsSiteEvent)
-					AddBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds, ref beachSections,
+					AddBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds,
+						ref beachSections,
 						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
-						ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
+						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
 						ref treeCount, ref rbTreeRoot);
 				else
 				{
 					if (deleted.ContainsKey(fEvent.Id)) deleted.Remove(fEvent.Id);
-					else RemoveBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds, ref beachSections,
+					else RemoveBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds, 
+						ref beachSections,
 						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
-						ref treeArc, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
+						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
 						ref treeCount, ref rbTreeRoot);
 				}
 			}
 
+			Debug.Log(Edges.Length);
+			
 			var newIndex = 0;
-			var newEdges = new NativeList<VEdge>(Edges.Capacity, Allocator.Temp);
 			var temp = new NativeList<float2>(4, Allocator.Temp);
 			for (var i = 0; i < Edges.Length; i++)
 			{
@@ -87,39 +92,27 @@ namespace Voronoi.Jobs
 				if (n < 0)
 				{
 					edge = IsNotSet(edgesEnds[i]) ?
-						new VEdge(newIndex, Edges[i].Start, BuildRayEnd(i, ref temp), Edges[i].Left, Edges[i].Right) :
-						new VEdge(newIndex, Edges[i].Start, edgesEnds[i], Edges[i].Left, Edges[i].Right);
+						new VEdge(Edges[i].Start, BuildRayEnd(i, ref temp), Edges[i].Left, Edges[i].Right) :
+						new VEdge(Edges[i].Start, edgesEnds[i], Edges[i].Left, Edges[i].Right);
 				}
 				else
 				{
 					if (IsNotSet(edgesEnds[i]))
-						edge = new VEdge(newIndex, edgesEnds[n], BuildRayEnd(i, ref temp), Edges[i].Left, Edges[i].Right);
+						edge = new VEdge( edgesEnds[n], BuildRayEnd(i, ref temp), Edges[i].Left, Edges[i].Right);
 					else if (IsNotSet(edgesEnds[n]))
-						edge = new VEdge(newIndex, edgesEnds[i], BuildRayEnd(n, ref temp), Edges[i].Left, Edges[i].Right);
+						edge = new VEdge(edgesEnds[i], BuildRayEnd(n, ref temp), Edges[i].Left, Edges[i].Right);
 					else
-						edge = new VEdge(newIndex, edgesEnds[i], edgesEnds[n], Edges[i].Left, Edges[i].Right);
+						edge = new VEdge(edgesEnds[i], edgesEnds[n], Edges[i].Left, Edges[i].Right);
 					i++;
 				}
-				newEdges.Add(edge);
+
+				Edges[newIndex] = edge;
 				Regions.Add(edge.Left, edge);
 				Regions.Add(edge.Right, edge);
 				newIndex++;
 			}
-			Debug.Log(Edges.Length);
-			Edges.Clear();
-			Edges.AddRange(newEdges);
-			Debug.Log(Edges.Length);
+			EdgesCount[0] = newIndex;
 		}
-
-		public void Dispose()
-		{
-			Sites.Dispose();
-			Edges.Dispose();
-			Regions.Dispose();
-			SiteIndexIds.Dispose();
-			SiteIdIndexes.Dispose();
-		}
-		
 		private static readonly float Max = math.sqrt(math.sqrt(float.MaxValue));
 
 		private float2 BuildRayEnd(int index, ref NativeList<float2> candidates)
@@ -156,13 +149,13 @@ namespace Voronoi.Jobs
             candidates.Clear();
 
             if (Within(topX.x, minX, maxX))
-	            candidates.Add(topX);
+	            candidates.AddNoResize(topX);
             if (Within(bottomX.x, minX, maxX))
-	            candidates.Add(bottomX);
+	            candidates.AddNoResize(bottomX);
             if (Within(leftY.y, minY, maxY))
-	            candidates.Add(leftY);
+	            candidates.AddNoResize(leftY);
             if (Within(rightY.y, minY, maxY))
-	            candidates.Add(rightY);
+	            candidates.AddNoResize(rightY);
 
             //reject candidates which don't align with the slope
             for (var i = candidates.Length - 1; i > -1; i--)
@@ -215,17 +208,24 @@ namespace Voronoi.Jobs
 			return v.x <= float.MinValue || v.y <= float.MinValue;
 		}
 
+		public void Dispose()
+		{
+			Sites.Dispose();
+			Edges.Dispose();
+			EdgesCount.Dispose();
+			Regions.Dispose();
+			SiteIndexIds.Dispose();
+			SiteIdIndexes.Dispose();
+		}
 
 		public static FortunesAlgorithm CreateJob(NativeArray<VSite> sites)
 		{
-			var initialCapacity = math.ceilpow2(sites.Length * 4);
-			var edges = new NativeList<VEdge>(initialCapacity, Allocator.Persistent);
 			const int regionsCapacity = 1 << 4;
-
 			return new FortunesAlgorithm
 			{
 				Sites = sites,
-				Edges = edges,
+				Edges = new NativeList<VEdge>(sites.Length * 4, Allocator.Persistent),
+				EdgesCount = new NativeArray<int>(1,  Allocator.Persistent),
 				Regions = new NativeMultiHashMap<int, VEdge>(regionsCapacity, Allocator.Persistent),
 				SiteIdIndexes = new NativeHashMap<int, int>(sites.Length, Allocator.Persistent),
 				SiteIndexIds = new NativeHashMap<int, int>(sites.Length, Allocator.Persistent)
