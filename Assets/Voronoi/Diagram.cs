@@ -1,3 +1,4 @@
+// #define V_DEBUG
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
@@ -6,6 +7,7 @@ using UnityEngine;
 using Voronoi.Jobs;
 using Voronoi.Structures;
 
+// todo allocate memory from system before run build
 namespace Voronoi
 {
 	public class Diagram
@@ -13,6 +15,8 @@ namespace Voronoi
 		public float2[] Sites;
 		public VEdge[] Edges;
 		public VEdge[][] Regions;
+
+		private const int MaxSitesPerJob = 1024;
 
 		public Diagram(float2[] points)
 		{
@@ -24,26 +28,108 @@ namespace Voronoi
 			var vSites = new NativeArray<VSite>(Sites.Length, Allocator.Persistent);
 			for (var i = 0; i < Sites.Length; i++) vSites[i] = new VSite(i, Sites[i]);
 			vSites.Sort(new FortuneSiteComparer());
+
+			var jobsCount = math.ceilpow2((int) math.ceil((float) vSites.Length / MaxSitesPerJob));
+			var sitesPerJob = (int) math.ceil((float) vSites.Length / jobsCount);
+			var jobs = new FortunesWithConvexHull[jobsCount];
+			var jobHandles = new NativeList<JobHandle>(jobsCount, Allocator.Persistent);
 			
-			var job = FortunesAlgorithm.CreateJob(vSites);
-			Debug.Log($"initial edges capacity {job.Edges.Capacity}");
-			job.Run();
+			Debug.Log($"sites {vSites.Length}; jobs {jobsCount}; sites per job {sitesPerJob}");
+			
+			for (var i = 0; i < jobsCount; i++)
+			{
+				var start = i * sitesPerJob;
+				var length = math.min(sitesPerJob, vSites.Length - start);
+				jobs[i] = FortunesWithConvexHull.CreateJob(new NativeSlice<VSite>(vSites, start, length));
+				jobHandles.Add(jobs[i].Schedule());
+			}
 
-			Edges = new VEdge[job.EdgesCount[0]];
-			NativeArray<VEdge>.Copy(job.Edges, Edges, Edges.Length);
+			JobHandle.ScheduleBatchedJobs();
+			JobHandle.CompleteAll(jobHandles);
+			jobHandles.Clear();
+			vSites.Dispose();
 
-			Debug.Log($"result edges count {Edges.Length}");
+			if (jobs.Length == 1)
+			{
+				jobHandles.Dispose();
+				Prepare(jobs[0]);
+				return;
+			}
+			
+			var mergeJobs = new List<VoronoiMerger>();
+			for (var i = 0; i < jobs.Length; i += 2)
+			{
+				var job = VoronoiMerger.CreateJob(jobs[i], jobs[i + 1]);
+				mergeJobs.Add(job);
+				#if V_DEBUG
+					job.Execute();
+				#else 
+					jobHandles.Add(job.Schedule());
+				#endif
+			}
+
+			#if !V_DEBUG
+				JobHandle.ScheduleBatchedJobs();
+				JobHandle.CompleteAll(jobHandles);
+			#endif
+
+			foreach (var job in jobs) job.Dispose();
+
+			while (mergeJobs.Count > 1)
+			{
+				jobHandles.Clear();
+				var nextJobs = new List<VoronoiMerger>();
+				for (var i = 0; i < mergeJobs.Count; i += 2)
+				{
+					var job = VoronoiMerger.CreateJob(mergeJobs[i], mergeJobs[i + 1]);
+					nextJobs.Add(job);
+					#if V_DEBUG
+						job.Execute();
+					#else
+						jobHandles.Add(job.Schedule());
+					#endif
+				}
+				#if !V_DEBUG
+					JobHandle.ScheduleBatchedJobs();
+					JobHandle.CompleteAll(jobHandles);
+				#endif
+				
+				foreach (var mergeJob in mergeJobs) mergeJob.Dispose();
+				mergeJobs.Clear();
+
+				mergeJobs.AddRange(nextJobs);
+			}
+			
+			jobHandles.Dispose();
+			
+			Prepare(mergeJobs[0]);
+		}
+
+		private void Prepare(FortunesWithConvexHull job)
+		{
+			Prepare(job.EdgesCount[0], job.Edges, job.Regions);
+			job.Dispose();
+		}
+
+		private void Prepare(VoronoiMerger job)
+		{
+			Prepare(job.Edges.Length, job.Edges, job.Regions);
+			job.Dispose();
+		}
+
+		private void Prepare(int edgesCount, NativeList<VEdge> edges, NativeMultiHashMap<int, int> regions)
+		{
+			Edges = new VEdge[edgesCount];
+			NativeArray<VEdge>.Copy(edges, Edges, Edges.Length);
 			
 			Regions = new VEdge[Sites.Length][];
 			for (var i = 0; i < Sites.Length; i++)
 			{
-				var region = job.Regions.GetValuesForKey(i);
-				var edges = new List<VEdge>();
-				foreach (var edge in region) edges.Add(edge);
-				Regions[i] = edges.ToArray();
+				var region = regions.GetValuesForKey(i);
+				var list = new List<VEdge>();
+				foreach (var edge in region) list.Add(Edges[edge]);
+				Regions[i] = list.ToArray();
 			}
-
-			job.Dispose();
 		}
 
 		private class FortuneSiteComparer : IComparer<VSite>

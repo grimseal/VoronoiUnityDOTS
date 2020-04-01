@@ -151,8 +151,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   siteCount: 4096
-  width: 100
-  height: 100
+  width: 10
+  height: 10
   seed: 0
 --- !u!4 &300365346
 Transform:

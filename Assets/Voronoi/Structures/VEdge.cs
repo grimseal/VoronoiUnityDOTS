@@ -37,43 +37,48 @@ namespace Voronoi.Structures
 			Right = right;
 			Neighbor = -1;
 		}
+		
 
-		public VEdge(VEdge edge)
+		public VEdge(double2 start, double2 end, int left, int right)
 		{
-			Start = edge.Start;
-			End = edge.End;
-			Left = edge.Left;
-			Right = edge.Right;
-			Neighbor = edge.Neighbor;
+			Start = (float2) start;
+			End = (float2) end;
+			Left = left;
+			Right = right;
+			Neighbor = -1;
+		}
+		public VEdge(float2 start, double2 end, int left, int right)
+		{
+			Start = start;
+			End = (float2) end;
+			Left = left;
+			Right = right;
+			Neighbor = -1;
+		}
+
+		public VEdge(double2 start, float2 end, int left, int right)
+		{
+			Start = (float2) start;
+			End = end;
+			Left = left;
+			Right = right;
+			Neighbor = -1;
 		}
 		
 		public static bool operator ==(VEdge a, VEdge b)
 		{
-			return a.Equals(b);
+			return IsEqual(a, b);
 		}
 		public static bool operator !=(VEdge a, VEdge b)
 		{
-			return !a.Equals(b);
+			return IsEqual(a, b);
 		}
 
-		private bool Equals(VEdge other)
-		{
-			return Left == other.Left && Right == other.Right;
-		}
+		public static readonly VEdge Null = new VEdge(float2.zero, float2.zero, -1, -1);
 
-		public override bool Equals(object obj)
+		public static bool IsEqual(VEdge a, VEdge b)
 		{
-			return obj is VEdge other && Equals(other);
+			return a.Left == b.Left && a.Right == b.Right;
 		}
-
-		public override int GetHashCode()
-		{
-			unchecked
-			{
-				return (Left * 397) ^ Right;
-			}
-		}
-		
-		public static VEdge Null = new VEdge(float2.zero, float2.zero, -1, -1);
 	}
 }

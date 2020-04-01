@@ -1,6 +1,12 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
 using Unity.Mathematics;
 using UnityEngine;
+using Voronoi.Helpers;
+using Voronoi.Jobs;
+using Voronoi.Structures;
 using Debug = UnityEngine.Debug;
 using Random = UnityEngine.Random;
 
@@ -14,9 +20,13 @@ public class Demo : MonoBehaviour
     void Start()
     {
         UnityEditor.EditorWindow.FocusWindowIfItsOpen(typeof(UnityEditor.SceneView));
-        
+        Build(width, height, siteCount, true);
+    }
+
+    void Build(float w, float h, int c, bool render = false)
+    {
         // generate points
-        var points = GenerateRandomPoints();
+        var points = GenerateRandomPoints(w, h, c);
         
         var sw = Stopwatch.StartNew();
         
@@ -29,25 +39,28 @@ public class Demo : MonoBehaviour
 
         // debug output
         foreach (var edge in diagram.Edges)
-            Debug.DrawLine(ToVector3(edge.Start), ToVector3(edge.End), Color.white, float.MaxValue);
+            Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.white, float.MaxValue);
 
         // highlight ~10 random regions
         for (var i = 0; i < math.min(10, points.Length); i++)
             foreach (var edge in diagram.Regions[Random.Range(0, points.Length)])
-                Debug.DrawLine(ToVector3(edge.Start), ToVector3(edge.End), Color.red, float.MaxValue);
-
+                Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.red, float.MaxValue);
     }
 
-    private float2[] GenerateRandomPoints()
+    private float2[] GenerateRandomPoints(float w, float h, int c)
     {
-        if (seed != 0) Random.InitState(seed);
-        var points = new float2[siteCount];
-        for (var i = 0; i < siteCount; i++) points[i] = new float2(Random.Range(0, width), Random.Range(0, height));
+        if (seed == 0) seed = CurrentEpoch(); 
+        Random.InitState(seed);
+        Debug.Log($"seed {seed}");
+        var points = new float2[c];
+        for (var i = 0; i < c; i++) points[i] = new float2(Random.Range(0, w), Random.Range(0, h));
         return points;
     }
-
-    private static Vector3 ToVector3(float2 v)
+    
+    public static int CurrentEpoch()
     {
-        return new Vector3(v.x, 0, v.y);
+        var epochStart = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var currentEpochTime = (int)(DateTime.UtcNow - epochStart).TotalSeconds;
+        return currentEpochTime;
     }
 }

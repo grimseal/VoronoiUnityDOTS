@@ -2,7 +2,6 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
-using UnityEngine;
 using Voronoi.Helpers;
 using Voronoi.Structures;
 using static Voronoi.Handlers.BeachLine;
@@ -11,14 +10,19 @@ using static Voronoi.Handlers.MinHeap;
 namespace Voronoi.Jobs
 {
 	[BurstCompile(CompileSynchronously = true)]
-	public struct FortunesAlgorithm : IJob
+	public struct FortunesWithConvexHull : IJob
 	{
 		public NativeArray<VSite> Sites;
 		public NativeList<VEdge> Edges;
 		public NativeArray<int> EdgesCount;
-		public NativeMultiHashMap<int, VEdge> Regions;
+		public NativeMultiHashMap<int, int> Regions;
 		public NativeHashMap<int, int> SiteIdIndexes;
 		public NativeHashMap<int, int> SiteIndexIds;
+		public NativeList<VSite> ConvexHull;
+
+		// determined empirically for a random set of points
+		private const float EventsLengthModifier = 1.05f;
+		private const float DeletedEventsLengthModifier = 0.1f;
 
 		public void Execute()
 		{
@@ -38,10 +42,11 @@ namespace Voronoi.Jobs
 			var treePrevious = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeNext = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeRed = new NativeArray<bool>(capacity, Allocator.Temp);
-			
-			var eventsLength = (int) (Sites.Length * 1.05f);
+
+			var eventsLength = (int) (Sites.Length * EventsLengthModifier);
 			var events = new NativeArray<FortuneEvent>(eventsLength, Allocator.Temp);
-			var deletedCapacity = math.ceilpow2((int) (Sites.Length * 0.1f));
+			
+			var deletedCapacity = math.ceilpow2((int) (Sites.Length * DeletedEventsLengthModifier));
 			var deleted = new NativeHashMap<int, byte>(deletedCapacity, Allocator.Temp);
 
 			var arcSites = new NativeList<int>(capacity, Allocator.Temp);
@@ -86,10 +91,6 @@ namespace Voronoi.Jobs
 						ref treeCount, ref rbTreeRoot);
 				}
 			}
-
-			// Debug.Log(Edges.Length);
-			// Debug.Log(deletedCapacity);
-			// Debug.Log(deleted.Capacity);
 			
 			var newIndex = 0;
 			var temp = new NativeList<float2>(4, Allocator.Temp);
@@ -115,13 +116,17 @@ namespace Voronoi.Jobs
 				}
 
 				Edges[newIndex] = edge;
-				Regions.Add(edge.Left, edge);
-				Regions.Add(edge.Right, edge);
+				Regions.Add(edge.Left, newIndex);
+				Regions.Add(edge.Right, newIndex);
 				newIndex++;
 			}
 			EdgesCount[0] = newIndex;
+			for (var i = Edges.Length - 1; i >= newIndex; i--) Edges.RemoveAtSwapBack(i);
+
+			ConvexHull.AddRange(Handlers.ConvexHull.BuildConvexHull(Sites));
 		}
-		private static readonly float Max = math.sqrt(math.sqrt(float.MaxValue));
+
+		
 
 		private float2 BuildRayEnd(int index, ref NativeList<float2> candidates)
 		{
@@ -131,10 +136,10 @@ namespace Voronoi.Jobs
 			var right = new float2(Sites[r].X, Sites[r].Y);
 			var start = Edges[index].Start;
 
-			float minX = -Max;
-			float minY = -Max;
-			float maxX = Max;
-			float maxY = Max;
+			float minX = -VGeometry.max;
+			float minY = -VGeometry.max;
+			float maxX = VGeometry.max;
+			float maxY = VGeometry.max;
 
 	        var slopeRise = left.x - right.x;
 	        var slopeRun = -(left.y - right.y);
@@ -165,11 +170,11 @@ namespace Voronoi.Jobs
             if (Within(rightY.y, minY, maxY))
 	            candidates.AddNoResize(rightY);
 
-            //reject candidates which don't align with the slope
+            // reject candidates which don't align with the slope
             for (var i = candidates.Length - 1; i > -1; i--)
             {
                 var candidate = candidates[i];
-                //grab vector representing the edge
+                // grab vector representing the edge
                 var ax = candidate.x - start.x;
                 var ay = candidate.y - start.y;
                 if (slopeRun*ax + slopeRise*ay < 0) candidates.RemoveAtSwapBack(i);
@@ -177,8 +182,8 @@ namespace Voronoi.Jobs
 
             switch (candidates.Length)
             {
-	            //if there are two candidates we are outside the closer one is start
-	            //the further one is the end
+	            // if there are two candidates we are outside the closer one is start
+	            // the further one is the end
 	            case 2:
 	            {
 		            var ax = candidates[0].x - start.x;
@@ -187,11 +192,11 @@ namespace Voronoi.Jobs
 		            var by = candidates[1].y - start.y;
 		            return ax*ax + ay*ay > bx*bx + @by*@by ? candidates[0] : candidates[1];
 	            }
-	            //if there is one candidate we are inside
+	            // if there is one candidate we are inside
 	            case 1:
 		            return candidates[0];
 	            default:
-		            //there were no candidates
+		            // there were no candidates
 		            return new float2(float.MinValue, float.MinValue);
             }
 		}
@@ -224,19 +229,24 @@ namespace Voronoi.Jobs
 			Regions.Dispose();
 			SiteIndexIds.Dispose();
 			SiteIdIndexes.Dispose();
+			ConvexHull.Dispose();
 		}
 
-		public static FortunesAlgorithm CreateJob(NativeArray<VSite> sites)
+		public static FortunesWithConvexHull CreateJob(NativeSlice<VSite> sites)
 		{
 			const int regionsCapacity = 1 << 4;
-			return new FortunesAlgorithm
+			var arr = new NativeArray<VSite>(sites.Length, Allocator.Persistent);
+			sites.CopyTo(arr);
+			
+			return new FortunesWithConvexHull
 			{
-				Sites = sites,
-				Edges = new NativeList<VEdge>(sites.Length * 4, Allocator.Persistent),
+				Sites = arr,
+				Edges = new NativeList<VEdge>(arr.Length * 4, Allocator.Persistent),
 				EdgesCount = new NativeArray<int>(1,  Allocator.Persistent),
-				Regions = new NativeMultiHashMap<int, VEdge>(regionsCapacity, Allocator.Persistent),
-				SiteIdIndexes = new NativeHashMap<int, int>(sites.Length, Allocator.Persistent),
-				SiteIndexIds = new NativeHashMap<int, int>(sites.Length, Allocator.Persistent)
+				Regions = new NativeMultiHashMap<int, int>(regionsCapacity, Allocator.Persistent),
+				SiteIdIndexes = new NativeHashMap<int, int>(arr.Length, Allocator.Persistent),
+				SiteIndexIds = new NativeHashMap<int, int>(arr.Length, Allocator.Persistent),
+				ConvexHull = new NativeList<VSite>((int)math.sqrt(arr.Length), Allocator.Persistent)
 			};
 		}
 	}
