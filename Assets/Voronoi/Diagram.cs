@@ -1,4 +1,3 @@
-#define V_DEBUG
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
@@ -60,17 +59,11 @@ namespace Voronoi
 			{
 				var job = VoronoiMerger.CreateJob(jobs[i], jobs[i + 1]);
 				mergeJobs.Add(job);
-				#if V_DEBUG
-					job.Execute();
-				#else 
-					jobHandles.Add(job.Schedule());
-				#endif
+				jobHandles.Add(job.Schedule());
 			}
 
-			#if !V_DEBUG
-				JobHandle.ScheduleBatchedJobs();
-				JobHandle.CompleteAll(jobHandles);
-			#endif
+			JobHandle.ScheduleBatchedJobs();
+			JobHandle.CompleteAll(jobHandles);
 
 			foreach (var job in jobs) job.Dispose();
 
@@ -82,16 +75,10 @@ namespace Voronoi
 				{
 					var job = VoronoiMerger.CreateJob(mergeJobs[i], mergeJobs[i + 1]);
 					nextJobs.Add(job);
-					#if V_DEBUG
-						job.Execute();
-					#else
-						jobHandles.Add(job.Schedule());
-					#endif
+					jobHandles.Add(job.Schedule());
 				}
-				#if !V_DEBUG
-					JobHandle.ScheduleBatchedJobs();
-					JobHandle.CompleteAll(jobHandles);
-				#endif
+				JobHandle.ScheduleBatchedJobs();
+				JobHandle.CompleteAll(jobHandles);
 				
 				foreach (var mergeJob in mergeJobs) mergeJob.Dispose();
 				mergeJobs.Clear();

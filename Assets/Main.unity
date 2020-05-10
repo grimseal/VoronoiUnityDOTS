@@ -150,9 +150,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f1ac0068225cdc04eaf9f164459d4432, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  siteCount: 262144
-  width: 10
-  height: 10
+  siteCount: 65536
+  width: 100
+  height: 100
   seed: 0
 --- !u!4 &300365346
 Transform:

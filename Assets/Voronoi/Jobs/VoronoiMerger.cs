@@ -481,8 +481,8 @@ namespace Voronoi
         {
             var sites = new NativeArray<VSite>(left.Sites.Length + right.Sites.Length, Allocator.Persistent);
             var edges = new NativeList<VEdge>(left.Edges.Capacity + right.Edges.Capacity, Allocator.Persistent);
-            var regions = new NativeMultiHashMap<int, int>(left.Regions.Capacity + right.Regions.Capacity, Allocator.Persistent);
-            var siteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity + right.SiteIdIndexes.Capacity, Allocator.Persistent);
+            var regions = new NativeMultiHashMap<int, int>(left.Regions.Capacity, Allocator.Persistent);
+            var siteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity, Allocator.Persistent);
             var convexHull = new NativeList<VSite>(left.ConvexHull.Capacity + right.ConvexHull.Capacity, Allocator.Persistent);
 
             return new VoronoiMerger
