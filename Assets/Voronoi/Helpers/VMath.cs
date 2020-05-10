@@ -1,10 +1,11 @@
+// ReSharper disable CheckNamespace
 using Unity.Mathematics;
 
-namespace Voronoi.Helpers
+namespace Voronoi
 {
-	public static class VMath
+	internal static class VMath
 	{
-		private const float Epsilon = float.Epsilon * 1E+15f;
+		public const float Epsilon = float.Epsilon * 1E+15f;
 
 		public static float EvalParabola(float focusX, float focusY, float directrix, float x)
 		{

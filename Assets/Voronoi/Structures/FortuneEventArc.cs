@@ -1,6 +1,7 @@
-﻿namespace Voronoi.Structures
+﻿// ReSharper disable CheckNamespace
+namespace Voronoi
 {
-    public struct FortuneEventArc
+    internal struct FortuneEventArc
     {
         public readonly int Id;
         public readonly float X;

@@ -1,16 +1,16 @@
+// ReSharper disable CheckNamespace
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
-using Voronoi.Helpers;
 using Voronoi.Structures;
-using static Voronoi.Handlers.BeachLine;
-using static Voronoi.Handlers.MinHeap;
+using static Voronoi.BeachLine;
+using static Voronoi.MinHeap;
 
-namespace Voronoi.Jobs
+namespace Voronoi
 {
 	[BurstCompile(CompileSynchronously = true)]
-	public struct FortunesWithConvexHull : IJob
+	internal struct FortunesWithConvexHull : IJob
 	{
 		public NativeArray<VSite> Sites;
 		public NativeList<VEdge> Edges;
@@ -27,7 +27,7 @@ namespace Voronoi.Jobs
 		public void Execute()
 		{
 			var eventsCount = 0;
-			int eventIdSeq = 0;
+			var eventIdSeq = 0;
 
 			var edgesEnds = new NativeList<float2>(Edges.Capacity, Allocator.Temp);
 			
@@ -41,7 +41,7 @@ namespace Voronoi.Jobs
 			var treeParent = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treePrevious = new NativeArray<int>(capacity, Allocator.Temp); 
 			var treeNext = new NativeArray<int>(capacity, Allocator.Temp); 
-			var treeRed = new NativeArray<bool>(capacity, Allocator.Temp);
+			var treeColor = new NativeArray<bool>(capacity, Allocator.Temp);
 
 			var eventsLength = (int) (Sites.Length * EventsLengthModifier);
 			var events = new NativeArray<FortuneEvent>(eventsLength, Allocator.Temp);
@@ -79,7 +79,7 @@ namespace Voronoi.Jobs
 					AddBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds,
 						ref arcSites, ref arcEdges, ref arcEvents,
 						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
-						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
+						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeColor, 
 						ref treeCount, ref rbTreeRoot);
 				else
 				{
@@ -87,11 +87,18 @@ namespace Voronoi.Jobs
 					else RemoveBeachArc(fEvent, ref Sites, ref SiteIndexIds, ref Edges, ref edgesEnds, 
 						ref arcSites, ref arcEdges, ref arcEvents,
 						ref events, ref deleted, ref eventsCount, ref eventIdSeq, 
-						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, 
+						ref treeValue, ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeColor, 
 						ref treeCount, ref rbTreeRoot);
 				}
 			}
-			
+
+			MergeHalfEdgesAndBuildRayEnds(edgesEnds);
+
+			ConvexHull.AddRange(Voronoi.ConvexHull.BuildConvexHull(Sites));
+		}
+
+		private void MergeHalfEdgesAndBuildRayEnds(NativeList<float2> edgesEnds)
+		{
 			var newIndex = 0;
 			var temp = new NativeList<float2>(4, Allocator.Temp);
 			for (var i = 0; i < Edges.Length; i++)
@@ -122,11 +129,7 @@ namespace Voronoi.Jobs
 			}
 			EdgesCount[0] = newIndex;
 			for (var i = Edges.Length - 1; i >= newIndex; i--) Edges.RemoveAtSwapBack(i);
-
-			ConvexHull.AddRange(Handlers.ConvexHull.BuildConvexHull(Sites));
 		}
-
-		
 
 		private float2 BuildRayEnd(int index, ref NativeList<float2> candidates)
 		{

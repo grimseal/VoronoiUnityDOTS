@@ -1,12 +1,7 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
 using System.Diagnostics;
 using Unity.Mathematics;
 using UnityEngine;
-using Voronoi.Helpers;
-using Voronoi.Jobs;
-using Voronoi.Structures;
 using Debug = UnityEngine.Debug;
 using Random = UnityEngine.Random;
 

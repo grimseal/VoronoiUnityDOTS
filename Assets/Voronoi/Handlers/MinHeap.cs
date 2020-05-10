@@ -1,10 +1,10 @@
+// ReSharper disable CheckNamespace
 using System;
 using Unity.Collections;
-using Voronoi.Structures;
 
-namespace Voronoi.Handlers
+namespace Voronoi
 {
-	public struct MinHeap
+	internal static class MinHeap
 	{
 		public static bool EventInsert(FortuneEvent fortuneEvent, ref NativeArray<FortuneEvent> events, ref int count)
 		{

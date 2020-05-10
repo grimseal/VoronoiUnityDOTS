@@ -1,8 +1,9 @@
+// ReSharper disable CheckNamespace
 using Unity.Collections;
 
-namespace Voronoi.Handlers
+namespace Voronoi
 {
-	public struct RedBlackTree
+	internal static class RedBlackTree
 	{
 		public static int InsertTreeNode(
 			int node,
@@ -13,7 +14,7 @@ namespace Voronoi.Handlers
 			ref NativeArray<int> treeParent,
 			ref NativeArray<int> treePrevious,
 			ref NativeArray<int> treeNext,
-			ref NativeArray<bool> treeRed,
+			ref NativeArray<bool> treeColor,
 			ref int treeCount,
 			ref int root)
 		{
@@ -65,23 +66,23 @@ namespace Voronoi.Handlers
 
             //successor.Left = successor.Right = null;
             treeParent[successor] = parent;
-            treeRed[successor] = true;
+            treeColor[successor] = true;
 
             //the magic of the red black tree
             int grandma;
             int aunt;
             node = successor;
-            while (parent > -1 && treeRed[parent])
+            while (parent > -1 && treeColor[parent])
             {
 	            grandma = treeParent[parent];
                 if (parent == treeLeft[grandma])
                 {
                     aunt = treeRight[grandma];
-                    if (aunt > -1 && treeRed[aunt])
+                    if (aunt > -1 && treeColor[aunt])
                     {
-	                    treeRed[parent] = false;
-	                    treeRed[aunt] = false;
-	                    treeRed[grandma] = true;
+	                    treeColor[parent] = false;
+	                    treeColor[aunt] = false;
+	                    treeColor[grandma] = true;
                         node = grandma;
                     }
                     else
@@ -92,19 +93,19 @@ namespace Voronoi.Handlers
                             node = parent;
                             parent = treeParent[node];
                         }
-                        treeRed[parent] = false;
-                        treeRed[grandma] = true;
+                        treeColor[parent] = false;
+                        treeColor[grandma] = true;
                         RotateRight(grandma, ref treeLeft, ref treeRight, ref treeParent, ref root);
                     }
                 }
                 else
                 {
                     aunt = treeLeft[grandma];
-                    if (aunt > -1 && treeRed[aunt])
+                    if (aunt > -1 && treeColor[aunt])
                     {
-	                    treeRed[parent] = false;
-	                    treeRed[aunt] = false;
-	                    treeRed[grandma] = true;
+	                    treeColor[parent] = false;
+	                    treeColor[aunt] = false;
+	                    treeColor[grandma] = true;
 	                    node = grandma;
                     }
                     else
@@ -116,14 +117,14 @@ namespace Voronoi.Handlers
                             parent = treeParent[node];
                         }
                         
-                        treeRed[parent] = false;
-                        treeRed[grandma] = true;
+                        treeColor[parent] = false;
+                        treeColor[grandma] = true;
                         RotateLeft(grandma, ref treeLeft, ref treeRight, ref treeParent, ref root);
                     }
                 }
                 parent = treeParent[node];
             }
-            treeRed[root] = false;
+            treeColor[root] = false;
             return successor;
 		}
 
@@ -134,7 +135,7 @@ namespace Voronoi.Handlers
 			ref NativeArray<int> treeParent, 
 			ref NativeArray<int> treePrevious, 
 			ref NativeArray<int> treeNext, 
-			ref NativeArray<bool> treeRed,
+			ref NativeArray<bool> treeColor,
 			ref int root)
 		{
 			//fix up linked list structure
@@ -173,8 +174,8 @@ namespace Voronoi.Handlers
             bool red;
             if (left > -1 && right > -1)
             {
-                red = treeRed[next];
-                treeRed[next] = treeRed[node];
+                red = treeColor[next];
+                treeColor[next] = treeColor[node];
                 treeLeft[next] = left;
                 treeParent[left] = next;
 
@@ -200,7 +201,7 @@ namespace Voronoi.Handlers
             }
             else
             {
-                red = treeRed[node];
+                red = treeColor[node];
                 node = next;
             }
 
@@ -214,9 +215,9 @@ namespace Voronoi.Handlers
                 return;
             }
 
-            if (node > -1 && treeRed[node])
+            if (node > -1 && treeColor[node])
             {
-	            treeRed[node] = false;
+	            treeColor[node] = false;
                 return;
             }
 
@@ -233,26 +234,26 @@ namespace Voronoi.Handlers
                 if (node == treeLeft[parent])
                 {
                     sibling = treeRight[parent];
-                    if (treeRed[sibling])
+                    if (treeColor[sibling])
                     {
-	                    treeRed[sibling] = false;
-	                    treeRed[parent] = true;
+	                    treeColor[sibling] = false;
+	                    treeColor[parent] = true;
                         RotateLeft(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
                         sibling = treeRight[parent];
                     }
-                    if (treeLeft[sibling] > -1 && treeRed[treeLeft[sibling]] || 
-                        treeRight[sibling] > -1 && treeRed[treeRight[sibling]])
+                    if (treeLeft[sibling] > -1 && treeColor[treeLeft[sibling]] || 
+                        treeRight[sibling] > -1 && treeColor[treeRight[sibling]])
                     {
                         //pretty sure this can be sibling.Left!= null && sibling.Left.Red
-                        if (treeRight[sibling] < 0 || !treeRed[treeRight[sibling]])
+                        if (treeRight[sibling] < 0 || !treeColor[treeRight[sibling]])
                         {
-	                        treeRed[treeLeft[sibling]] = false;
-	                        treeRed[sibling] = true;
+	                        treeColor[treeLeft[sibling]] = false;
+	                        treeColor[sibling] = true;
 	                        RotateRight(sibling, ref treeLeft, ref treeRight, ref treeParent, ref root);
                             sibling = treeRight[parent];
                         }
-                        treeRed[sibling] = treeRed[parent];
-                        treeRed[parent] = treeRed[treeRight[sibling]] = false;
+                        treeColor[sibling] = treeColor[parent];
+                        treeColor[parent] = treeColor[treeRight[sibling]] = false;
                         RotateLeft(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
                         node = root;
                         break;
@@ -261,37 +262,37 @@ namespace Voronoi.Handlers
                 else
                 {
                     sibling = treeLeft[parent];
-                    if (treeRed[sibling])
+                    if (treeColor[sibling])
                     {
-	                    treeRed[sibling] = false;
-	                    treeRed[parent] = true;
+	                    treeColor[sibling] = false;
+	                    treeColor[parent] = true;
                         RotateRight(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
                         sibling = treeLeft[parent];
                     }
-                    if (treeLeft[sibling] > -1 && treeRed[treeLeft[sibling]] ||
-                        treeRight[sibling] > -1 && treeRed[treeRight[sibling]])
+                    if (treeLeft[sibling] > -1 && treeColor[treeLeft[sibling]] ||
+                        treeRight[sibling] > -1 && treeColor[treeRight[sibling]])
                     {
-                        if (treeLeft[sibling] < 0 || !treeRed[treeLeft[sibling]])
+                        if (treeLeft[sibling] < 0 || !treeColor[treeLeft[sibling]])
                         {
-	                        treeRed[treeRight[sibling]] = false;
-	                        treeRed[sibling] = true;
+	                        treeColor[treeRight[sibling]] = false;
+	                        treeColor[sibling] = true;
 	                        RotateLeft(sibling, ref treeLeft, ref treeRight, ref treeParent, ref root);
                             sibling = treeLeft[parent];
                         }
-                        treeRed[sibling] = treeRed[parent];
-                        treeRed[parent] = treeRed[treeLeft[sibling]] = false;
+                        treeColor[sibling] = treeColor[parent];
+                        treeColor[parent] = treeColor[treeLeft[sibling]] = false;
                         RotateRight(parent, ref treeLeft, ref treeRight, ref treeParent, ref root);
                         node = root;
                         break;
                     }
                 }
-                treeRed[sibling] = true;
+                treeColor[sibling] = true;
                 node = parent;
                 parent = treeParent[parent];
-            } while (!treeRed[node]);
+            } while (!treeColor[node]);
 
             if (node > -1)
-	            treeRed[node] = false;
+	            treeColor[node] = false;
 		}
 
 		private static int GetFirst(int node, ref NativeArray<int> treeLeft)

@@ -1,17 +1,15 @@
-﻿// #define V_DEBUG
-// using UnityEngine;
+﻿// ReSharper disable CheckNamespace
 using System;
 using Unity.Burst;
-using Voronoi.Helpers;
 using Voronoi.Structures;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace Voronoi.Jobs
+namespace Voronoi
 {
     [BurstCompile(CompileSynchronously = true)]
-    public struct VoronoiMerger : IJob
+    internal struct VoronoiMerger : IJob
     {
         #region Left voronoi data
 
@@ -80,27 +78,37 @@ namespace Voronoi.Jobs
         public NativeMultiHashMap<int, int> Regions;
 
         #endregion
-        
+
+
+        private NativeHashMap<int, float2> regionEnterPoints;
+        private NativeHashMap<int, VEdge> regionEnterEdges;
+        private NativeHashMap<int, int> regionEnterEdgesIndexes;
+
+        private NativeHashMap<int, byte> leftEdgeIndexesToRemove;
+        private NativeHashMap<int, byte> rightEdgeIndexesToRemove;
+
+        private double2 currentPoint;
+        private VEdge currentEdge;
+        private int currentEdgeIndex;
+
+        private VSite left;
+        private VSite right;
+
+        private NativeList<VEdge> newEdges;
 
         public void Execute()
         {
             const int capacity = 1024;
-            var newEdges = new NativeList<VEdge>(capacity, Allocator.Temp);
-            var regionEnterPoints = new NativeHashMap<int, float2>(capacity, Allocator.Temp);
-            var regionEnterEdges = new NativeHashMap<int, VEdge>(capacity, Allocator.Temp);
-            var regionEnterEdgesIndexes = new NativeHashMap<int, int>(capacity, Allocator.Temp);;
+            newEdges = new NativeList<VEdge>(capacity, Allocator.Temp);
+
+            regionEnterPoints = new NativeHashMap<int, float2>(capacity, Allocator.Temp);
+            regionEnterEdges = new NativeHashMap<int, VEdge>(capacity, Allocator.Temp);
+            regionEnterEdgesIndexes = new NativeHashMap<int, int>(capacity, Allocator.Temp);;
             
             var temp = new NativeList<double2>(4, Allocator.Temp);
 
-            var leftEdgeIndexesToRemove = new NativeHashMap<int, byte>(capacity, Allocator.Temp);
-            var rightEdgeIndexesToRemove = new NativeHashMap<int, byte>(capacity, Allocator.Temp);
-
-            #if V_DEBUG
-                var leftCopy = new NativeList<VEdge>(LeftEdges.Capacity, Allocator.Temp);
-                leftCopy.AddRange(LeftEdges);
-                var rightCopy = new NativeList<VEdge>(RightEdges.Capacity, Allocator.Temp);
-                rightCopy.AddRange(RightEdges);
-            #endif
+            leftEdgeIndexesToRemove = new NativeHashMap<int, byte>(capacity, Allocator.Temp);
+            rightEdgeIndexesToRemove = new NativeHashMap<int, byte>(capacity, Allocator.Temp);
 
             // merge sites
             NativeArray<VSite>.Copy(LeftSites, 0, Sites, 0, LeftSites.Length);
@@ -109,17 +117,13 @@ namespace Voronoi.Jobs
             for (var i = 0; i < RightSites.Length; i++) SiteIdIndexes[RightSites[i].Id] = i + LeftSites.Length;
 
             // merge convex hulls and find upper and lower tangents
-            ConvexHull.AddRange(Handlers.ConvexHull.Merge(LeftConvexHull, RightConvexHull, 
+            ConvexHull.AddRange(Voronoi.ConvexHull.Merge(LeftConvexHull, RightConvexHull, 
                 out var lLeft, out var lRight,
                 out var qLeft, out var qRight));
 
-            var left = lLeft;
-            var right = lRight;
-            double2 currentPoint;
-            VEdge currentEdge;
-            int currentEdgeIndex;
+            left = lLeft;
+            right = lRight;
 
-            
             // incoming ray
             var middle = (left.Point + right.Point) * 0.5f;
             var rayDir = VGeometry.Perpendicular(right.Point - left.Point);
@@ -196,105 +200,31 @@ namespace Voronoi.Jobs
                     out var rDistance, out var rVertex, out rightEdgeIndex, out var rEdge);
 
                 if (!lCrossed && !rCrossed)
-                {
-                    #if V_DEBUG
-                    DebugOutput(Sites, lLeft, lRight, qLeft, qRight,leftCopy, rightCopy, newEdges);
-                    #endif
                     throw new Exception("Voronoi merge error: no crossing");
-                }
 
-                VEdge newEdge;
                 var leftId = left.Id;
                 var rightId = right.Id;
+
+                if (lCrossed && rCrossed && VGeometry.Float2Equals(lVertex, rVertex))
+                {
+                    var newEdge = new VEdge(currentPoint, lVertex, leftId, rightId);
+                    newEdges.Add(newEdge);
+                    HandleLeftEdge(leftId, newEdge.End, newEdge.End, lEdge, leftEdgeIndex);
+                    HandleRightEdge(rightId, newEdge.End, newEdge.End, rEdge, rightEdgeIndex);
+                    continue;
+                }
+
                 if (lDistance < rDistance)
                 {
-                    #if V_DEBUG
-                        if (!VGeometry.PointOnLineSegment(lEdge.Start, lEdge.End, lVertex))
-                        {
-                            DebugOutput(Sites, lLeft, lRight, qLeft, qRight, leftCopy, rightCopy, newEdges);
-                            Debug.DrawLine(lEdge.Start.ToVector3(), lEdge.End.ToVector3(), Color.red, 
-                                float.MaxValue);
-                            Debug.Log(lEdge.Start);
-                            Debug.Log(lEdge.End);
-                            throw new Exception("Voronoi merge error: wrong crossing");
-                        }
-                    #endif
-                    newEdge = new VEdge(currentPoint, lVertex, leftId, rightId);
-                    left = LeftSites[LeftSiteIdIndexes[lEdge.Left == leftId ? lEdge.Right : lEdge.Left]];
-                    currentPoint = lVertex;
-                    currentEdge = lEdge;
-                    currentEdgeIndex = leftEdgeIndex;
-
+                    var newEdge = new VEdge(currentPoint, lVertex, leftId, rightId);
                     newEdges.Add(newEdge);
-                    
-                    // region exit
-                    var enterPoint = regionEnterPoints[leftId];
-                    var exitPoint = newEdge.End;
-                    var enterEdge = regionEnterEdges[leftId];
-                    var enterEdgeIndex = regionEnterEdgesIndexes[leftId];
-
-                    LeftEdges[currentEdgeIndex] = CutLeftEdge(enterPoint, enterEdge, exitPoint, currentEdge);
-
-                    var enumerator = LeftRegions.GetValuesForKey(leftId);
-                    while (enumerator.MoveNext())
-                    {
-                        var edgeIndex = enumerator.Current;
-                        if (edgeIndex == currentEdgeIndex) continue;
-                        if (edgeIndex == enterEdgeIndex) continue;
-                        var dir = GetEdgeSideLeft(enterPoint, exitPoint, edgeIndex);
-                        if (dir > 0) leftEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
-                    }
-                    enumerator.Dispose();
-                    
-                    // region enter
-                    regionEnterPoints[left.Id] = (float2) currentPoint;
-                    regionEnterEdges[left.Id] = currentEdge;
-                    regionEnterEdgesIndexes[left.Id] = currentEdgeIndex;
+                    HandleLeftEdge(leftId, newEdge.End, lVertex, lEdge, leftEdgeIndex);
                 }
                 else
                 {
-                    #if V_DEBUG
-                    if (!VGeometry.PointOnLineSegment(rEdge.Start, rEdge.End, rVertex))
-                    {
-                        DebugOutput(Sites, lLeft, lRight, qLeft, qRight, leftCopy, rightCopy, newEdges);
-                        Debug.DrawLine(rEdge.Start.ToVector3(), rEdge.End.ToVector3(), Color.red, 
-                            float.MaxValue);
-                        Debug.Log(rEdge.Start);
-                        Debug.Log(rEdge.End);
-                        throw new Exception("Voronoi merge error: wrong crossing");
-                    }
-                    #endif
-                    newEdge = new VEdge(currentPoint, rVertex, leftId, rightId);
-                    right = RightSites[RightSiteIdIndexes[rEdge.Left == rightId ? rEdge.Right : rEdge.Left]];
-                    currentPoint = rVertex;
-                    currentEdge = rEdge;
-                    currentEdgeIndex = rightEdgeIndex;
-                    
+                    var newEdge = new VEdge(currentPoint, rVertex, leftId, rightId);
                     newEdges.Add(newEdge);
-                    
-                    // region exit
-                    var enterPoint = regionEnterPoints[rightId];
-                    var exitPoint = newEdge.End;
-                    var enterEdge = regionEnterEdges[rightId];
-                    var enterEdgeIndex = regionEnterEdgesIndexes[rightId];
-
-                    RightEdges[currentEdgeIndex] = CutRightEdge(enterPoint, enterEdge, exitPoint, currentEdge);
-
-                    var enumerator = RightRegions.GetValuesForKey(rightId);
-                    while (enumerator.MoveNext())
-                    {
-                        var edgeIndex = enumerator.Current;
-                        if (edgeIndex == currentEdgeIndex) continue;
-                        if (edgeIndex == enterEdgeIndex) continue;
-                        var dir = GetEdgeSideRight(enterPoint, exitPoint, edgeIndex);
-                        if (dir < 0) rightEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
-                    }
-                    enumerator.Dispose();
-                    
-                    // region enter
-                    regionEnterPoints[right.Id] = (float2) currentPoint;
-                    regionEnterEdges[right.Id] = currentEdge;
-                    regionEnterEdgesIndexes[right.Id] = currentEdgeIndex;
+                    HandleRightEdge(rightId, newEdge.End, rVertex, rEdge, rightEdgeIndex);
                 }
             }
 
@@ -340,20 +270,76 @@ namespace Voronoi.Jobs
             Edges.AddRange(RightEdges);
             
             #endregion
-            
-            #if V_DEBUG
-                Debug.Log($"sites length {Sites.Length}\n" +
-                          $"newEdges {newEdges.Capacity} {newEdges.Length}\n" +
-                          $"regionEnterPoints {regionEnterPoints.Capacity}\n" +
-                          $"regionEnterEdges {regionEnterEdges.Capacity}\n" +
-                          $"regionEnterEdgesIndexes {regionEnterEdgesIndexes.Capacity}\n" +
-                          $"leftEdgeIndexesToRemove {leftEdgeIndexesToRemove.Capacity}\n" +
-                          $"rightEdgeIndexesToRemove {rightEdgeIndexesToRemove.Capacity}");
-            #endif
 
             // Если точки имеют одинаковую координату X, то стоит их сортировать по координате Y,
             // таким образом, чтобы равномерно и последовательно их разделить.
         }
+
+
+        private void HandleLeftEdge(int siteId, float2 exitPoint, double2 targetVertex, VEdge targetEdge,
+            int targetEdgeIndex)
+        {
+            left = LeftSites[LeftSiteIdIndexes[targetEdge.Left == siteId ? targetEdge.Right : targetEdge.Left]];
+            currentPoint = targetVertex;
+            currentEdge = targetEdge;
+            currentEdgeIndex = targetEdgeIndex;
+                    
+            // region exit
+            var enterPoint = regionEnterPoints[siteId];
+            var enterEdge = regionEnterEdges[siteId];
+            var enterEdgeIndex = regionEnterEdgesIndexes[siteId];
+        
+            LeftEdges[currentEdgeIndex] = CutLeftEdge(enterPoint, enterEdge, exitPoint, currentEdge);
+        
+            var enumerator = LeftRegions.GetValuesForKey(siteId);
+            while (enumerator.MoveNext())
+            {
+                var edgeIndex = enumerator.Current;
+                if (edgeIndex == currentEdgeIndex) continue;
+                if (edgeIndex == enterEdgeIndex) continue;
+                var dir = GetEdgeSideLeft(enterPoint, exitPoint, edgeIndex);
+                if (dir > 0) leftEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
+            }
+            enumerator.Dispose();
+                    
+            // region enter
+            regionEnterPoints[left.Id] = (float2) currentPoint;
+            regionEnterEdges[left.Id] = currentEdge;
+            regionEnterEdgesIndexes[left.Id] = currentEdgeIndex;
+        }
+
+        private void HandleRightEdge(int siteId, float2 exitPoint, double2 targetVertex, VEdge targetEdge,
+            int targetEdgeIndex)
+        {
+            right = RightSites[RightSiteIdIndexes[targetEdge.Left == siteId ? targetEdge.Right : targetEdge.Left]];
+            currentPoint = targetVertex;
+            currentEdge = targetEdge;
+            currentEdgeIndex = targetEdgeIndex;
+                    
+            // region exit
+            var enterPoint = regionEnterPoints[siteId];
+            var enterEdge = regionEnterEdges[siteId];
+            var enterEdgeIndex = regionEnterEdgesIndexes[siteId];
+
+            RightEdges[currentEdgeIndex] = CutRightEdge(enterPoint, enterEdge, exitPoint, currentEdge);
+
+            var enumerator = RightRegions.GetValuesForKey(siteId);
+            while (enumerator.MoveNext())
+            {
+                var edgeIndex = enumerator.Current;
+                if (edgeIndex == currentEdgeIndex) continue;
+                if (edgeIndex == enterEdgeIndex) continue;
+                var dir = GetEdgeSideRight(enterPoint, exitPoint, edgeIndex);
+                if (dir < 0) rightEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
+            }
+            enumerator.Dispose();
+                    
+            // region enter
+            regionEnterPoints[right.Id] = (float2) currentPoint;
+            regionEnterEdges[right.Id] = currentEdge;
+            regionEnterEdgesIndexes[right.Id] = currentEdgeIndex;
+        }
+        
 
         private static double RayRegionCrossing(
             float2 middle, double2 normal, VSite site,
@@ -396,7 +382,7 @@ namespace Voronoi.Jobs
             return distance;
         }
 
-        private static bool RegionCrossing(
+        private bool RegionCrossing(
             double2 start,
             double2 dir,
             VSite site,
@@ -421,7 +407,7 @@ namespace Voronoi.Jobs
             {
                 var edgeIndex = region.Current;
                 var edge = edges[edgeIndex];
-                if (VEdge.IsEqual(edge, currentEdge)) continue;
+                if (edge.Equals(currentEdge)) continue;
                 var c = edge.Start;
                 var d = edge.End;
                 if (!VGeometry.Intersection(a, b, c, d, out var point)) continue;
@@ -431,7 +417,7 @@ namespace Voronoi.Jobs
                 if (!VGeometry.PointOnLineSegment(c, d, point)) continue;
                 minApproach = apr;
                 minPoint = point;
-                minEdge = edge;
+                minEdge = edge;    
                 minEdgeIndex = edgeIndex;
                 crossed = true;
             }
@@ -462,7 +448,7 @@ namespace Voronoi.Jobs
 
         private static VEdge CutLeftEdge(double2 enterPoint, VEdge enterEdge, double2 exitPoint, VEdge exitEdge)
         {
-            if (VEdge.IsEqual(enterEdge, exitEdge))
+            if (enterEdge.Equals(exitEdge))
                 return new VEdge(enterPoint, exitPoint, exitEdge.Left, exitEdge.Right);
             
             return VGeometry.RaySide(enterPoint, exitPoint, exitEdge.Start) <
@@ -473,7 +459,7 @@ namespace Voronoi.Jobs
         
         private static VEdge CutRightEdge(double2 enterPoint, VEdge enterEdge, double2 exitPoint, VEdge exitEdge)
         {
-            if (VEdge.IsEqual(enterEdge, exitEdge))
+            if (enterEdge.Equals(exitEdge))
                 return new VEdge(enterPoint, exitPoint, exitEdge.Left, exitEdge.Right);
 
             return VGeometry.RaySide(enterPoint, exitPoint, exitEdge.Start) >
@@ -525,9 +511,12 @@ namespace Voronoi.Jobs
         {
             var sites = new NativeArray<VSite>(left.Sites.Length + right.Sites.Length, Allocator.Persistent);
             var edges = new NativeList<VEdge>(left.Edges.Capacity + right.Edges.Capacity, Allocator.Persistent);
-            var regions = new NativeMultiHashMap<int, int>(left.Regions.Capacity + right.Regions.Capacity, Allocator.Persistent);
-            var siteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity + right.SiteIdIndexes.Capacity, Allocator.Persistent);
-            var convexHull = new NativeList<VSite>(left.ConvexHull.Capacity + right.ConvexHull.Capacity, Allocator.Persistent);
+            var regions =
+                new NativeMultiHashMap<int, int>(left.Regions.Capacity + right.Regions.Capacity, Allocator.Persistent);
+            var siteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity + right.SiteIdIndexes.Capacity,
+                Allocator.Persistent);
+            var convexHull = new NativeList<VSite>(left.ConvexHull.Capacity + right.ConvexHull.Capacity,
+                Allocator.Persistent);
 
             return new VoronoiMerger
             {
@@ -550,99 +539,5 @@ namespace Voronoi.Jobs
                 ConvexHull = convexHull
             };
         }
-
-
-        #if V_DEBUG
-        private void DebugOutput(NativeArray<VSite> sites, VSite lLeft, VSite lRight, VSite qLeft, VSite qRight,
-            NativeList<VEdge> leftCopy, NativeList<VEdge> rightCopy, NativeList<VEdge> newEdges)
-        {
-            var fortune = FortunesWithConvexHull.CreateJob(sites);
-            fortune.Execute();
-
-            for (int i = 0; i < fortune.EdgesCount[0]; i++)
-            {
-                var edge = fortune.Edges[i];
-                Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.black.SetAlpha(0.5f),
-                    float.MaxValue);
-            }
-
-
-            for (var i = 1; i < ConvexHull.Length; i++)
-                Debug.DrawLine(ConvexHull[i - 1].Point.ToVector3(),
-                    ConvexHull[i].Point.ToVector3(), Color.white.SetAlpha(0.5f),
-                    float.MaxValue);
-            
-            Debug.DrawLine(ConvexHull[0].Point.ToVector3(),
-                ConvexHull[ConvexHull.Length - 1].Point.ToVector3(), Color.white.SetAlpha(0.5f),
-                float.MaxValue);
-            
-            // {
-            //     var offset = new Vector3(-1, 0, 0);
-            //     var convexHull = LeftConvexHull;
-            //     for (var i = 1; i < convexHull.Length; i++)
-            //     {
-            //         var color = Color.HSVToRGB(1f / convexHull.Length * i, 1, 1);
-            //         Debug.DrawLine(convexHull[i - 1].Point.ToVector3() + offset,
-            //             convexHull[i].Point.ToVector3() + offset, color,float.MaxValue);
-            //     }
-            //     Debug.DrawLine(convexHull[0].Point.ToVector3() + offset,
-            //         convexHull[convexHull.Length - 1].Point.ToVector3() + offset, Color.red,
-            //         float.MaxValue);
-            // }
-            //
-            // {
-            //     var offset = new Vector3(1, 0, 0);
-            //     var convexHull = RightConvexHull;
-            //     for (var i = 1; i < convexHull.Length; i++)
-            //     {
-            //         var color = Color.HSVToRGB(1f / convexHull.Length * i, 1, 1);
-            //         Debug.DrawLine(convexHull[i - 1].Point.ToVector3() + offset,
-            //             convexHull[i].Point.ToVector3() + offset, color,float.MaxValue);
-            //     }
-            //     Debug.DrawLine(convexHull[0].Point.ToVector3() + offset,
-            //         convexHull[convexHull.Length - 1].Point.ToVector3() + offset, Color.red,
-            //         float.MaxValue);
-            // }
-            
-            Debug.DrawLine(lLeft.Point.ToVector3(), lRight.Point.ToVector3(), Color.red,
-                float.MaxValue);
-            
-            Debug.DrawLine(qLeft.Point.ToVector3(), qRight.Point.ToVector3(), Color.blue,
-                float.MaxValue);
-            
-            // for (var i = 0; i < LeftEdges.Length; i++)
-            // {
-            //     var edge = LeftEdges[i];
-            //     Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.red.SetAlpha(0.8f),
-            //         float.MaxValue);
-            // }
-            //
-            // for (var i = 0; i < RightEdges.Length; i++)
-            // {
-            //     var edge = RightEdges[i];
-            //     Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.blue.SetAlpha(0.8f),
-            //         float.MaxValue);
-            // }
-            
-            for (var i = 0; i < leftCopy.Length; i++)
-            {
-                var edge = leftCopy[i];
-                Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.white.SetAlpha(0.5f),
-                    float.MaxValue);
-            }
-            
-            for (var i = 0; i < rightCopy.Length; i++)
-            {
-                var edge = rightCopy[i];
-                Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.white.SetAlpha(0.5f),
-                    float.MaxValue);
-            }
-            
-            for (var i = 0; i < newEdges.Length; i++)
-                Debug.DrawLine(newEdges[i].Start.ToVector3(), newEdges[i].End.ToVector3(), Color.black,
-                    float.MaxValue);
-                    
-        }
-        #endif
     }
 }

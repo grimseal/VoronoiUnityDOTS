@@ -1,9 +1,10 @@
-﻿using Unity.Collections;
+﻿// ReSharper disable CheckNamespace
+using Unity.Collections;
 using Unity.Mathematics;
 
-namespace Voronoi.Helpers
+namespace Voronoi
 {
-    public struct VGeometry
+	internal static class VGeometry
     {
         
         public static float2 Perpendicular(float2 vector2, bool counterClockwise = false)
@@ -105,7 +106,9 @@ namespace Voronoi.Helpers
 			return VMath.ApproxGreaterThanOrEqualTo(x, a) && VMath.ApproxLessThanOrEqualTo(x, b);
 		}
 
-		public static bool PointOnLineSegment(double2 pt1, double2 pt2, double2 pt, float epsilon = 0.001f)
+		public const float Epsilon = 0.001f;
+		
+		public static bool PointOnLineSegment(double2 pt1, double2 pt2, double2 pt, double epsilon = 0.00001)
 		{
 			if (pt.x - math.max(pt1.x, pt2.x) > epsilon || 
 			    math.min(pt1.x, pt2.x) - pt.x > epsilon || 
@@ -159,5 +162,17 @@ namespace Voronoi.Helpers
 			if (cross.z < 0) return -1;
 			return 0;
 		}
+
+
+		public static bool Float2Equals(double2 a, double2 b)
+		{
+			return Float2Equals((float2) a, (float2) b);
+		}
+
+		public static bool Float2Equals(float2 a, float2 b)
+		{
+			var e = a == b;
+			return e.x && e.y;
+		} 
     }
 }

@@ -1,13 +1,13 @@
+// ReSharper disable CheckNamespace
 using Unity.Collections;
 using Unity.Mathematics;
-using Voronoi.Helpers;
 using Voronoi.Structures;
-using static Voronoi.Handlers.MinHeap;
-using static Voronoi.Handlers.RedBlackTree;
+using static Voronoi.MinHeap;
+using static Voronoi.RedBlackTree;
 
-namespace Voronoi.Handlers
+namespace Voronoi
 {
-	public struct BeachLine
+	internal static class BeachLine
 	{
 		public static void AddBeachArc(
 			FortuneEvent fortuneEvent,
@@ -257,7 +257,7 @@ namespace Voronoi.Handlers
 			ref NativeArray<int> treeParent, 
 			ref NativeArray<int> treePrevious, 
 			ref NativeArray<int> treeNext, 
-			ref NativeArray<bool> treeRed,
+			ref NativeArray<bool> treeColor,
 			ref int treeCount,
 			ref int root)
 		{
@@ -336,10 +336,10 @@ namespace Voronoi.Handlers
 
             // remove the section from the tree
             RemoveTreeNode(node,
-	            ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
+	            ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeColor, ref root);
             for (var i = 0; i < toBeRemoved.Length; i++)
 	            RemoveTreeNode(toBeRemoved[i],
-		            ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeRed, ref root);
+		            ref treeLeft, ref treeRight, ref treeParent, ref treePrevious, ref treeNext, ref treeColor, ref root);
 
             CheckCircle(prev, ref treeValue, ref treePrevious, ref treeNext, 
 	            ref arcSites, ref arcEvents,
@@ -351,7 +351,7 @@ namespace Voronoi.Handlers
 
 		private static float LeftBreakpoint(
 			int node,
-			ref NativeArray<int> treeArc,
+			ref NativeArray<int> treeValue,
 			ref NativeArray<int> treePrevious,
 			ref NativeList<int> arcSites,
 			ref NativeArray<VSite> sites,
@@ -359,14 +359,14 @@ namespace Voronoi.Handlers
 		{
 			var leftNode = treePrevious[node];
 			//degenerate parabola
-			var a = sites[arcSites[treeArc[node]]];
+			var a = sites[arcSites[treeValue[node]]];
 			if (VMath.ApproxEqual(a.Y - directrix, 0))
 				return a.X;
 			//node is the first piece of the beach line
 			if (leftNode < 0)
 				return float.NegativeInfinity;
 			//left node is degenerate
-			var b = sites[arcSites[treeArc[leftNode]]];
+			var b = sites[arcSites[treeValue[leftNode]]];
 			if (VMath.ApproxEqual(b.Y - directrix, 0))
 				return b.X;
 			return VMath.IntersectParabolaX(b.X, b.Y, a.X, a.Y, directrix);
@@ -374,7 +374,7 @@ namespace Voronoi.Handlers
 
 		private static float RightBreakpoint(
 			int node, 
-			ref NativeArray<int> treeArc,
+			ref NativeArray<int> treeValue,
 			ref NativeArray<int> treeNext,
 			ref NativeList<int> arcSites,
 			ref NativeArray<VSite> sites, 
@@ -382,14 +382,14 @@ namespace Voronoi.Handlers
 		{
 			var rightNode = treeNext[node];
 			//degenerate parabola
-			var a = sites[arcSites[treeArc[node]]];
+			var a = sites[arcSites[treeValue[node]]];
 			if (VMath.ApproxEqual(a.Y - directrix, 0))
 				return a.X;
 			//node is the last piece of the beach line
 			if (rightNode < 0)
 				return float.PositiveInfinity;
 			//left node is degenerate
-			var b = sites[arcSites[treeArc[rightNode]]];
+			var b = sites[arcSites[treeValue[rightNode]]];
 			if (VMath.ApproxEqual(b.Y - directrix, 0))
 				return b.X;
 			return VMath.IntersectParabolaX(a.X, a.Y, b.X, b.Y, directrix);
@@ -397,7 +397,7 @@ namespace Voronoi.Handlers
 
 		private static void CheckCircle(
 			int node,
-			ref NativeArray<int> treeArc,
+			ref NativeArray<int> treeValue,
 			ref NativeArray<int> treePrevious,
 			ref NativeArray<int> treeNext,
 			ref NativeList<int> arcSites,
@@ -415,9 +415,9 @@ namespace Voronoi.Handlers
 			if (left < 0 || right < 0)
 				return;
 
-			var leftSiteIndex = arcSites[treeArc[left]];
-			var centerSiteIndex = arcSites[treeArc[node]];
-			var rightSiteIndex = arcSites[treeArc[right]];
+			var leftSiteIndex = arcSites[treeValue[left]];
+			var centerSiteIndex = arcSites[treeValue[node]];
+			var rightSiteIndex = arcSites[treeValue[right]];
 
 			//if the left arc and right arc are defined by the same
 			//focus, the two arcs cannot converge
@@ -457,7 +457,7 @@ namespace Voronoi.Handlers
 			//y center is off
 			var vPoint = new float2(x + bx, yCenter + math.sqrt(x * x + y * y));
 			var circleEvent = new FortuneEvent(ref eventIdSeq, ref vPoint, yCenter, node);
-			arcEvents[treeArc[node]] = new FortuneEventArc(circleEvent);
+			arcEvents[treeValue[node]] = new FortuneEventArc(circleEvent);
 			EventInsert(circleEvent, ref events, ref eventsCount);
 		}
 

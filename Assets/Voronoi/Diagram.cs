@@ -1,10 +1,9 @@
-// #define V_DEBUG
+#define V_DEBUG
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
-using Voronoi.Jobs;
 using Voronoi.Structures;
 
 // todo allocate memory from system before run build

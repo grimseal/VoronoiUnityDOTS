@@ -64,21 +64,12 @@ namespace Voronoi.Structures
 			Right = right;
 			Neighbor = -1;
 		}
-		
-		public static bool operator ==(VEdge a, VEdge b)
+
+		public bool Equals(VEdge other)
 		{
-			return IsEqual(a, b);
-		}
-		public static bool operator !=(VEdge a, VEdge b)
-		{
-			return IsEqual(a, b);
+			return Left == other.Left && Right == other.Right;
 		}
 
 		public static readonly VEdge Null = new VEdge(float2.zero, float2.zero, -1, -1);
-
-		public static bool IsEqual(VEdge a, VEdge b)
-		{
-			return a.Left == b.Left && a.Right == b.Right;
-		}
 	}
 }

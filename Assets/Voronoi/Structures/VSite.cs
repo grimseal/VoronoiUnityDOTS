@@ -24,6 +24,7 @@ namespace Voronoi.Structures
 		{
 			return a.Equals(b);
 		}
+
 		public static bool operator !=(VSite a, VSite b)
 		{
 			return !a.Equals(b);

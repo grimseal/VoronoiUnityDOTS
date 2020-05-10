@@ -1,17 +1,17 @@
-﻿using System.Collections.Generic;
+﻿// ReSharper disable CheckNamespace
+using System.Collections.Generic;
 using Voronoi.Structures;
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace Voronoi.Handlers
+namespace Voronoi
 {
-    public struct ConvexHull
+    internal static class ConvexHull
     {
 	    
         public static NativeArray<VSite> BuildConvexHull(NativeArray<VSite> sites)
         {
             // TODO Replace with Chan's algorithm
-            // return Solve(sites);
             return AndrewsConvexHull(sites);
             
         }

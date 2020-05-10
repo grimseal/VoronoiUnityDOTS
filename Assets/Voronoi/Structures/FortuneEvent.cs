@@ -1,12 +1,11 @@
+// ReSharper disable CheckNamespace
 using Unity.Mathematics;
 
-namespace Voronoi.Structures
+namespace Voronoi
 {
-	public struct FortuneEvent
+	internal struct FortuneEvent
 	{
 		public readonly int Id;
-
-		public readonly byte Type;
 
 		public readonly float X;
 
@@ -18,15 +17,21 @@ namespace Voronoi.Structures
 
 		public readonly int Node;
 
-		public bool Exists => Type != 0;
+		/// <summary>
+		/// Site/Circle event type flag
+		/// </summary>
+		public readonly bool IsSiteEvent;
 
-		public bool IsSiteEvent => Type == SiteEventType;
-
-		public bool IsCircleEvent => Type == CircleEventType;
-
+		/// <summary>
+		/// Site event constructor
+		/// </summary>
+		/// <param name="eventIdSeq"></param>
+		/// <param name="siteIndex"></param>
+		/// <param name="siteX"></param>
+		/// <param name="siteY"></param>
 		public FortuneEvent(ref int eventIdSeq, int siteIndex, float siteX, float siteY)
 		{
-			Type = SiteEventType;
+			IsSiteEvent = true;
 			Id = eventIdSeq++;
 			Site = (ushort) siteIndex;
 			X = siteX;
@@ -35,9 +40,16 @@ namespace Voronoi.Structures
 			Node = -1;
 		}
 
+		/// <summary>
+		/// Circle event constructor
+		/// </summary>
+		/// <param name="eventIdSeq"></param>
+		/// <param name="point"></param>
+		/// <param name="yCenter"></param>
+		/// <param name="nodeIndex"></param>
 		public FortuneEvent(ref int eventIdSeq, ref float2 point, float yCenter, int nodeIndex)
 		{
-			Type = CircleEventType;
+			IsSiteEvent = false;
 			Id = eventIdSeq++;
 			X = point.x;
 			Y = point.y;
@@ -45,9 +57,5 @@ namespace Voronoi.Structures
 			Node = nodeIndex;
 			Site = ushort.MaxValue;
 		}
-
-		private const byte SiteEventType = 1;
-
-		private const byte CircleEventType = 2;
 	}
 }
