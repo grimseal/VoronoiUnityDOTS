@@ -5,6 +5,7 @@ using Voronoi.Structures;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
+using UnityEngine;
 
 namespace Voronoi
 {
@@ -67,6 +68,13 @@ namespace Voronoi
         /// </summary>
         public NativeMultiHashMap<int, int> RightRegions;
 
+        public NativeList<VEdge> newEdges;
+        public NativeList<VEdge> leftRemoved;
+        public NativeList<VEdge> rightRemoved;
+
+
+        public bool debug;
+
         #endregion
 
         #region Output data
@@ -79,14 +87,6 @@ namespace Voronoi
 
         #endregion
 
-
-        private NativeHashMap<int, float2> regionEnterPoints;
-        private NativeHashMap<int, VEdge> regionEnterEdges;
-        private NativeHashMap<int, int> regionEnterEdgesIndexes;
-
-        private NativeHashMap<int, byte> leftEdgeIndexesToRemove;
-        private NativeHashMap<int, byte> rightEdgeIndexesToRemove;
-
         private double2 currentPoint;
         private VEdge currentEdge;
         private int currentEdgeIndex;
@@ -94,21 +94,18 @@ namespace Voronoi
         private VSite left;
         private VSite right;
 
-        private NativeList<VEdge> newEdges;
-
         public void Execute()
         {
             const int capacity = 1024;
-            newEdges = new NativeList<VEdge>(capacity, Allocator.Temp);
 
-            regionEnterPoints = new NativeHashMap<int, float2>(capacity, Allocator.Temp);
-            regionEnterEdges = new NativeHashMap<int, VEdge>(capacity, Allocator.Temp);
-            regionEnterEdgesIndexes = new NativeHashMap<int, int>(capacity, Allocator.Temp);;
+            var regionEnterPoints = new NativeHashMap<int, float2>(capacity, Allocator.Temp);
+            var regionEnterEdges = new NativeHashMap<int, VEdge>(capacity, Allocator.Temp);
+            var regionEnterEdgesIndexes = new NativeHashMap<int, int>(capacity, Allocator.Temp);;
             
             var temp = new NativeList<double2>(4, Allocator.Temp);
 
-            leftEdgeIndexesToRemove = new NativeHashMap<int, byte>(capacity, Allocator.Temp);
-            rightEdgeIndexesToRemove = new NativeHashMap<int, byte>(capacity, Allocator.Temp);
+            var leftEdgeIndexesToRemove = new NativeHashSet<int>(capacity, Allocator.Temp);
+            var rightEdgeIndexesToRemove = new NativeHashSet<int>(capacity, Allocator.Temp);
 
             // merge sites
             NativeArray<VSite>.Copy(LeftSites, 0, Sites, 0, LeftSites.Length);
@@ -139,6 +136,7 @@ namespace Voronoi
                 currentEdgeIndex = leftEdgeIndex;
                 var end = VGeometry.BuildRayEnd(currentPoint, right.Point, left.Point, temp);
                 startEdge = new VEdge(currentPoint, end, left.Id, right.Id);
+                leftRemoved.Add(LeftEdges[currentEdgeIndex]);
                 currentEdge = CutLeftEdge(end, VEdge.Null, currentPoint, currentEdge);
                 LeftEdges[currentEdgeIndex] = currentEdge;
                 var enumerator = LeftRegions.GetValuesForKey(left.Id);
@@ -147,7 +145,11 @@ namespace Voronoi
                     var edgeIndex = enumerator.Current;
                     if (edgeIndex == currentEdgeIndex) continue;
                     var dir = GetEdgeSideLeft(end, currentPoint, edgeIndex);
-                    if (dir > 0) leftEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
+                    if (dir > 0)
+                    {
+                        leftRemoved.Add(LeftEdges[edgeIndex]);
+                        leftEdgeIndexesToRemove.Add(edgeIndex);
+                    }
                 }
                 enumerator.Dispose();
                 left = LeftSites[LeftSiteIdIndexes[leftEdge.Left == left.Id ? leftEdge.Right : leftEdge.Left]];
@@ -162,6 +164,7 @@ namespace Voronoi
                 currentEdgeIndex = rightEdgeIndex;
                 var end = VGeometry.BuildRayEnd(currentPoint, right.Point, left.Point, temp);
                 startEdge = new VEdge(currentPoint, end, left.Id, right.Id);
+                rightRemoved.Add(RightEdges[currentEdgeIndex]);
                 currentEdge = CutRightEdge(end, VEdge.Null, currentPoint, currentEdge);
                 RightEdges[currentEdgeIndex] = currentEdge;
                 var enumerator = RightRegions.GetValuesForKey(right.Id);
@@ -170,7 +173,11 @@ namespace Voronoi
                     var edgeIndex = enumerator.Current;
                     if (edgeIndex == currentEdgeIndex) continue;
                     var dir = GetEdgeSideRight(end, currentPoint, edgeIndex);
-                    if (dir < 1) rightEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
+                    if (dir < 1)
+                    {
+                        leftRemoved.Add(LeftEdges[edgeIndex]);
+                        rightEdgeIndexesToRemove.Add(edgeIndex);
+                    }
                 }
                 enumerator.Dispose();
                 right = RightSites[RightSiteIdIndexes[rightEdge.Left == right.Id ? rightEdge.Right : rightEdge.Left]];
@@ -209,8 +216,8 @@ namespace Voronoi
                 {
                     var newEdge = new VEdge(currentPoint, lVertex, leftId, rightId);
                     newEdges.Add(newEdge);
-                    HandleLeftEdge(leftId, newEdge.End, newEdge.End, lEdge, leftEdgeIndex);
-                    HandleRightEdge(rightId, newEdge.End, newEdge.End, rEdge, rightEdgeIndex);
+                    HandleLeftEdge(leftId, newEdge.End, newEdge.End, lEdge, leftEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref leftEdgeIndexesToRemove);
+                    HandleRightEdge(rightId, newEdge.End, newEdge.End, rEdge, rightEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref rightEdgeIndexesToRemove);
                     continue;
                 }
 
@@ -218,13 +225,13 @@ namespace Voronoi
                 {
                     var newEdge = new VEdge(currentPoint, lVertex, leftId, rightId);
                     newEdges.Add(newEdge);
-                    HandleLeftEdge(leftId, newEdge.End, lVertex, lEdge, leftEdgeIndex);
+                    HandleLeftEdge(leftId, newEdge.End, lVertex, lEdge, leftEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref leftEdgeIndexesToRemove);
                 }
                 else
                 {
                     var newEdge = new VEdge(currentPoint, rVertex, leftId, rightId);
                     newEdges.Add(newEdge);
-                    HandleRightEdge(rightId, newEdge.End, rVertex, rEdge, rightEdgeIndex);
+                    HandleRightEdge(rightId, newEdge.End, rVertex, rEdge, rightEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref rightEdgeIndexesToRemove);
                 }
             }
 
@@ -238,10 +245,10 @@ namespace Voronoi
             #region Merge data
 
             // remove old edges
-            var leftEdgeIndexes = leftEdgeIndexesToRemove.GetKeyArray(Allocator.Temp);
+            var leftEdgeIndexes = leftEdgeIndexesToRemove.ToNativeArray(Allocator.Temp);
             leftEdgeIndexes.Sort();
             for (var i = leftEdgeIndexes.Length - 1; i >= 0; i--) LeftEdges.RemoveAtSwapBack(leftEdgeIndexes[i]);
-            var rightEdgeIndexes = rightEdgeIndexesToRemove.GetKeyArray(Allocator.Temp);
+            var rightEdgeIndexes = rightEdgeIndexesToRemove.ToNativeArray(Allocator.Temp);
             rightEdgeIndexes.Sort();
             for (var i = rightEdgeIndexes.Length - 1; i >= 0; i--) RightEdges.RemoveAtSwapBack(rightEdgeIndexes[i]);
 
@@ -275,9 +282,12 @@ namespace Voronoi
             // таким образом, чтобы равномерно и последовательно их разделить.
         }
 
-
         private void HandleLeftEdge(int siteId, float2 exitPoint, double2 targetVertex, VEdge targetEdge,
-            int targetEdgeIndex)
+            int targetEdgeIndex,
+            ref NativeHashMap<int, float2> regionEnterPoints,
+            ref NativeHashMap<int, VEdge> regionEnterEdges,
+            ref NativeHashMap<int, int> regionEnterEdgesIndexes,
+            ref NativeHashSet<int> leftEdgeIndexesToRemove)
         {
             left = LeftSites[LeftSiteIdIndexes[targetEdge.Left == siteId ? targetEdge.Right : targetEdge.Left]];
             currentPoint = targetVertex;
@@ -289,6 +299,7 @@ namespace Voronoi
             var enterEdge = regionEnterEdges[siteId];
             var enterEdgeIndex = regionEnterEdgesIndexes[siteId];
         
+            leftRemoved.Add(LeftEdges[currentEdgeIndex]);
             LeftEdges[currentEdgeIndex] = CutLeftEdge(enterPoint, enterEdge, exitPoint, currentEdge);
         
             var enumerator = LeftRegions.GetValuesForKey(siteId);
@@ -298,7 +309,11 @@ namespace Voronoi
                 if (edgeIndex == currentEdgeIndex) continue;
                 if (edgeIndex == enterEdgeIndex) continue;
                 var dir = GetEdgeSideLeft(enterPoint, exitPoint, edgeIndex);
-                if (dir > 0) leftEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
+                if (dir > 0)
+                {
+                    leftRemoved.Add(LeftEdges[edgeIndex]);
+                    leftEdgeIndexesToRemove.Add(edgeIndex);
+                }
             }
             enumerator.Dispose();
                     
@@ -309,7 +324,11 @@ namespace Voronoi
         }
 
         private void HandleRightEdge(int siteId, float2 exitPoint, double2 targetVertex, VEdge targetEdge,
-            int targetEdgeIndex)
+            int targetEdgeIndex,
+            ref NativeHashMap<int, float2> regionEnterPoints,
+            ref NativeHashMap<int, VEdge> regionEnterEdges,
+            ref NativeHashMap<int, int> regionEnterEdgesIndexes,
+            ref NativeHashSet<int> rightEdgeIndexesToRemove)
         {
             right = RightSites[RightSiteIdIndexes[targetEdge.Left == siteId ? targetEdge.Right : targetEdge.Left]];
             currentPoint = targetVertex;
@@ -321,6 +340,7 @@ namespace Voronoi
             var enterEdge = regionEnterEdges[siteId];
             var enterEdgeIndex = regionEnterEdgesIndexes[siteId];
 
+            rightRemoved.Add(RightEdges[currentEdgeIndex]);
             RightEdges[currentEdgeIndex] = CutRightEdge(enterPoint, enterEdge, exitPoint, currentEdge);
 
             var enumerator = RightRegions.GetValuesForKey(siteId);
@@ -330,7 +350,11 @@ namespace Voronoi
                 if (edgeIndex == currentEdgeIndex) continue;
                 if (edgeIndex == enterEdgeIndex) continue;
                 var dir = GetEdgeSideRight(enterPoint, exitPoint, edgeIndex);
-                if (dir < 0) rightEdgeIndexesToRemove.TryAdd(edgeIndex, 0);
+                if (dir < 0)
+                {
+                    rightRemoved.Add(RightEdges[currentEdgeIndex]);
+                    rightEdgeIndexesToRemove.Add(edgeIndex);
+                }
             }
             enumerator.Dispose();
                     
@@ -475,16 +499,13 @@ namespace Voronoi
             Regions.Dispose();
             SiteIdIndexes.Dispose();
             ConvexHull.Dispose();
+            newEdges.Dispose();
+            rightRemoved.Dispose();
+            leftRemoved.Dispose();
         }
 
-        public static VoronoiMerger CreateJob(FortunesWithConvexHull left, FortunesWithConvexHull right)
+        public static VoronoiMerger CreateJob(ref FortunesWithConvexHull left, ref FortunesWithConvexHull right)
         {
-            var sites = new NativeArray<VSite>(left.Sites.Length + right.Sites.Length, Allocator.Persistent);
-            var edges = new NativeList<VEdge>(left.Edges.Capacity + right.Edges.Capacity, Allocator.Persistent);
-            var regions = new NativeMultiHashMap<int, int>(left.Regions.Capacity, Allocator.Persistent);
-            var siteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity, Allocator.Persistent);
-            var convexHull = new NativeList<VSite>(left.ConvexHull.Capacity + right.ConvexHull.Capacity, Allocator.Persistent);
-
             return new VoronoiMerger
             {
                 LeftSites = left.Sites,
@@ -498,26 +519,21 @@ namespace Voronoi
                 RightRegions = right.Regions,
                 RightSiteIdIndexes = right.SiteIdIndexes,
                 RightConvexHull = right.ConvexHull,
+                
+                newEdges = new NativeList<VEdge>(1024, Allocator.Persistent),
+                leftRemoved = new NativeList<VEdge>(1024, Allocator.Persistent),
+                rightRemoved = new NativeList<VEdge>(1024, Allocator.Persistent),
 
-                Sites = sites,
-                Edges = edges,
-                Regions = regions,
-                SiteIdIndexes = siteIdIndexes,
-                ConvexHull = convexHull
+                Sites = new NativeArray<VSite>(left.Sites.Length + right.Sites.Length, Allocator.Persistent),
+                Edges = new NativeList<VEdge>(left.Edges.Capacity + right.Edges.Capacity, Allocator.Persistent),
+                Regions = new NativeMultiHashMap<int, int>(left.Regions.Capacity, Allocator.Persistent),
+                SiteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity, Allocator.Persistent),
+                ConvexHull = new NativeList<VSite>(left.ConvexHull.Capacity + right.ConvexHull.Capacity, Allocator.Persistent)
             };
         }
 
-        public static VoronoiMerger CreateJob(VoronoiMerger left, VoronoiMerger right)
+        public static VoronoiMerger CreateJob(ref VoronoiMerger left, ref VoronoiMerger right)
         {
-            var sites = new NativeArray<VSite>(left.Sites.Length + right.Sites.Length, Allocator.Persistent);
-            var edges = new NativeList<VEdge>(left.Edges.Capacity + right.Edges.Capacity, Allocator.Persistent);
-            var regions =
-                new NativeMultiHashMap<int, int>(left.Regions.Capacity + right.Regions.Capacity, Allocator.Persistent);
-            var siteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity + right.SiteIdIndexes.Capacity,
-                Allocator.Persistent);
-            var convexHull = new NativeList<VSite>(left.ConvexHull.Capacity + right.ConvexHull.Capacity,
-                Allocator.Persistent);
-
             return new VoronoiMerger
             {
                 LeftSites = left.Sites,
@@ -531,12 +547,17 @@ namespace Voronoi
                 RightRegions = right.Regions,
                 RightSiteIdIndexes = right.SiteIdIndexes,
                 RightConvexHull = right.ConvexHull,
+                
+                newEdges = new NativeList<VEdge>(1024, Allocator.Persistent),
+                leftRemoved = new NativeList<VEdge>(1024, Allocator.Persistent),
+                rightRemoved = new NativeList<VEdge>(1024, Allocator.Persistent),
 
-                Sites = sites,
-                Edges = edges,
-                Regions = regions,
-                SiteIdIndexes = siteIdIndexes,
-                ConvexHull = convexHull
+
+                Sites = new NativeArray<VSite>(left.Sites.Length + right.Sites.Length, Allocator.Persistent),
+                Edges = new NativeList<VEdge>(left.Edges.Capacity + right.Edges.Capacity, Allocator.Persistent),
+                Regions = new NativeMultiHashMap<int, int>(left.Regions.Capacity + right.Regions.Capacity, Allocator.Persistent),
+                SiteIdIndexes = new NativeHashMap<int, int>(left.SiteIdIndexes.Capacity + right.SiteIdIndexes.Capacity, Allocator.Persistent),
+                ConvexHull = new NativeList<VSite>(left.ConvexHull.Capacity + right.ConvexHull.Capacity, Allocator.Persistent)
             };
         }
     }

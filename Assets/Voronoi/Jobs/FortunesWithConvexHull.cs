@@ -14,11 +14,11 @@ namespace Voronoi
 	{
 		public NativeArray<VSite> Sites;
 		public NativeList<VEdge> Edges;
-		public NativeArray<int> EdgesCount;
 		public NativeMultiHashMap<int, int> Regions;
 		public NativeHashMap<int, int> SiteIdIndexes;
 		public NativeHashMap<int, int> SiteIndexIds;
 		public NativeList<VSite> ConvexHull;
+		public float4 size;
 
 		// determined empirically for a random set of points
 		private const float EventsLengthModifier = 1.05f;
@@ -127,8 +127,8 @@ namespace Voronoi
 				Regions.Add(edge.Right, newIndex);
 				newIndex++;
 			}
-			EdgesCount[0] = newIndex;
-			for (var i = Edges.Length - 1; i >= newIndex; i--) Edges.RemoveAtSwapBack(i);
+
+			Edges.RemoveRange(newIndex, Edges.Length - newIndex);
 		}
 
 		private float2 BuildRayEnd(int index, ref NativeList<float2> candidates)
@@ -139,10 +139,15 @@ namespace Voronoi
 			var right = new float2(Sites[r].X, Sites[r].Y);
 			var start = Edges[index].Start;
 
-			float minX = -VGeometry.max;
-			float minY = -VGeometry.max;
-			float maxX = VGeometry.max;
-			float maxY = VGeometry.max;
+			var minX = -VGeometry.max;
+			var minY = -VGeometry.max;
+			var maxX = VGeometry.max;
+			var maxY = VGeometry.max;
+			
+			// var minX = size.x;
+			// var minY = size.y;
+			// var maxX = size.z;
+			// var maxY = size.w;
 
 	        var slopeRise = left.x - right.x;
 	        var slopeRun = -(left.y - right.y);
@@ -224,18 +229,103 @@ namespace Voronoi
 			return v.x <= float.MinValue || v.y <= float.MinValue;
 		}
 
+		/*private static VEdge ClipEdge(VEdge edge, float minX, float minY, float maxX, float maxY)
+		{
+			var accept = false;
+
+            //if its a ray
+            if (edge.End == null)
+            {
+                accept = ClipRay(edge, minX, minY, maxX, maxY);
+            }
+            else
+            {
+                //Cohen–Sutherland
+                var start = ComputeOutCode(edge.Start.X, edge.Start.Y, minX, minY, maxX, maxY);
+                var end = ComputeOutCode(edge.End.X, edge.End.Y, minX, minY, maxX, maxY);
+
+                while (true)
+                {
+                    if ((start | end) == 0)
+                    {
+                        accept = true;
+                        break;
+                    }
+                    if ((start & end) != 0)
+                    {
+                        break;
+                    }
+
+                    double x = -1, y = -1;
+                    var outcode = start != 0 ? start : end;
+
+                    if ((outcode & 0x8) != 0) // top
+                    {
+                        x = edge.Start.X + (edge.End.X - edge.Start.X)*(maxY - edge.Start.Y)/(edge.End.Y - edge.Start.Y);
+                        y = maxY;
+                    }
+                    else if ((outcode & 0x4) != 0) // bottom
+                    {
+                        x = edge.Start.X + (edge.End.X - edge.Start.X)*(minY - edge.Start.Y)/(edge.End.Y - edge.Start.Y);
+                        y = minY;
+                    }
+                    else if ((outcode & 0x2) != 0) //right
+                    {
+                        y = edge.Start.Y + (edge.End.Y - edge.Start.Y)*(maxX - edge.Start.X)/(edge.End.X - edge.Start.X);
+                        x = maxX;
+                    }
+                    else if ((outcode & 0x1) != 0) //left
+                    {
+                        y = edge.Start.Y + (edge.End.Y - edge.Start.Y)*(minX - edge.Start.X)/(edge.End.X - edge.Start.X);
+                        x = minX;
+                    }
+
+                    if (outcode == start)
+                    {
+                        edge.Start = new VPoint(x, y);
+                        start = ComputeOutCode(x, y, minX, minY, maxX, maxY);
+                    }
+                    else
+                    {
+                        edge.End = new VPoint(x, y);
+                        end = ComputeOutCode(x, y, minX, minY, maxX, maxY);
+                    }
+                }
+            }
+            //if we have a neighbor
+            if (edge.Neighbor != null)
+            {
+                //check it
+                var valid = ClipEdge(edge.Neighbor, minX, minY, maxX, maxY);
+                //both are valid
+                if (accept && valid)
+                {
+                    edge.Start = edge.Neighbor.End;
+                }
+                //this edge isn't valid, but the neighbor is
+                //flip and set
+                if (!accept && valid)
+                {
+                    edge.Start = edge.Neighbor.End;
+                    edge.End = edge.Neighbor.Start;
+                    accept = true;
+                }
+            }
+            return accept;
+			
+		}*/
+
 		public void Dispose()
 		{
 			Sites.Dispose();
 			Edges.Dispose();
-			EdgesCount.Dispose();
 			Regions.Dispose();
 			SiteIndexIds.Dispose();
 			SiteIdIndexes.Dispose();
 			ConvexHull.Dispose();
 		}
 
-		public static FortunesWithConvexHull CreateJob(NativeSlice<VSite> sites)
+		public static FortunesWithConvexHull CreateJob(NativeSlice<VSite> sites, float4 size)
 		{
 			const int regionsCapacity = 1 << 4;
 			var arr = new NativeArray<VSite>(sites.Length, Allocator.Persistent);
@@ -243,9 +333,9 @@ namespace Voronoi
 			
 			return new FortunesWithConvexHull
 			{
+				size = size,
 				Sites = arr,
 				Edges = new NativeList<VEdge>(arr.Length * 4, Allocator.Persistent),
-				EdgesCount = new NativeArray<int>(1,  Allocator.Persistent),
 				Regions = new NativeMultiHashMap<int, int>(regionsCapacity, Allocator.Persistent),
 				SiteIdIndexes = new NativeHashMap<int, int>(arr.Length, Allocator.Persistent),
 				SiteIndexIds = new NativeHashMap<int, int>(arr.Length, Allocator.Persistent),
