@@ -1,5 +1,4 @@
-﻿// ReSharper disable CheckNamespace
-using Unity.Collections;
+﻿using Unity.Collections;
 using Unity.Mathematics;
 
 namespace Voronoi
@@ -87,7 +86,7 @@ namespace Voronoi
 		            return (float2)candidates[0];
 	            default:
 		            //there were no candidates
-		            return new float2(float.MinValue, float.MinValue);
+		            return new float2(float.NaN, float.NaN);
             }
 		}
 

@@ -1,17 +1,18 @@
-﻿// ReSharper disable CheckNamespace
-using System;
+﻿using System;
 using Unity.Burst;
-using Voronoi.Structures;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using UnityEngine;
+using Voronoi.Structures;
 
-namespace Voronoi
+namespace Voronoi.Jobs
 {
     [BurstCompile(CompileSynchronously = true)]
     internal struct VoronoiMerger : IJob
     {
+        public float4 bounds;
+        
         #region Left voronoi data
 
         /// <summary>
@@ -94,6 +95,148 @@ namespace Voronoi
         private VSite left;
         private VSite right;
 
+        private void DrawHull(NativeList<VSite> hull, Color color)
+        {
+            var a = hull[0];
+            var b = hull[^1];
+            Debug.DrawLine(a.Point.ToVector3(), b.Point.ToVector3(), color, float.MaxValue);
+            for (var i = 1; i < hull.Length; i++)
+            {
+                a = hull[i - 1];
+                b = hull[i];
+                Debug.DrawLine(a.Point.ToVector3(), b.Point.ToVector3(), color, float.MaxValue);
+            }
+        }
+
+        private void DrawEdges(NativeList<VEdge> edges, Color color)
+        {
+            for (var i = 0; i < edges.Length; i++)
+                DrawEdge(edges[i], color);
+        }
+
+        private void DrawEdge(VEdge edge, Color color)
+        {
+            Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), color, float.MaxValue);
+        }
+
+        private void DrawLine(float2 a, float2 b, Color color)
+        {
+            Debug.DrawLine(a.ToVector3(), b.ToVector3(), color, float.MaxValue);
+        }
+
+
+        private static FortunesWithConvexHull CreateDiagram(NativeArray<VSite> arr, float4 bounds)
+        {
+            const int regionsCapacity = 1 << 4;
+			
+            var fortunes =  new FortunesWithConvexHull
+            {
+                bounds = bounds,
+                Sites = arr,
+                Edges = new NativeList<VEdge>(arr.Length * 4, Allocator.Temp),
+                Regions = new NativeMultiHashMap<int, int>(regionsCapacity, Allocator.Temp),
+                SiteIdIndexes = new NativeHashMap<int, int>(arr.Length, Allocator.Temp),
+                SiteIndexIds = new NativeHashMap<int, int>(arr.Length, Allocator.Temp),
+                ConvexHull = new NativeList<VSite>((int)math.sqrt(arr.Length), Allocator.Temp)
+            };
+            
+            fortunes.Execute();
+
+            return fortunes;
+        }
+
+        private bool IsOnBounds(float2 point)
+        {
+            return point.x == bounds.x || point.y == bounds.y || point.x == bounds.z || point.y == bounds.w;
+        }
+
+        private bool TryGetEntry(out VSite lLeft, out VSite lRight, out VSite qLeft, out VSite qRight)
+        {
+            var sites = new NativeArray<VSite>(LeftConvexHull.Length + RightConvexHull.Length, Allocator.Temp);
+            NativeArray<VSite>.Copy(LeftConvexHull, 0, sites, 0, LeftConvexHull.Length);
+            NativeArray<VSite>.Copy(RightConvexHull, 0, sites, LeftConvexHull.Length, RightConvexHull.Length);
+            var fortunes = CreateDiagram(sites, bounds);
+
+
+            var found = false;
+            VSite foundLeft = default;
+            VSite foundRight = default;
+            float2 foundPoint = default; 
+            
+            
+            foreach (var edge in fortunes.Edges)
+            {
+                var s = IsOnBounds(edge.Start);
+                var e = IsOnBounds(edge.End);
+
+                var l = LeftSiteIdIndexes.ContainsKey(edge.Left); 
+                var r = LeftSiteIdIndexes.ContainsKey(edge.Right);
+                if (l == r) continue;
+                
+                DrawEdge(edge, Color.yellow);
+
+                if (!s && !e) continue;
+                
+                var point = s ? edge.Start : edge.End;
+
+                if (!found)
+                {
+                    found = true;
+                    foundPoint = point;
+                    if (l)
+                    {
+                        foundLeft = LeftSites[LeftSiteIdIndexes[edge.Left]];
+                        foundRight = RightSites[RightSiteIdIndexes[edge.Right]];
+                    }
+                    else
+                    {
+                        foundLeft = LeftSites[LeftSiteIdIndexes[edge.Right]];
+                        foundRight = RightSites[RightSiteIdIndexes[edge.Left]];
+                    }
+                    continue;
+                }
+
+                if (foundPoint.y > point.y)
+                {
+                    lLeft = foundLeft;
+                    lRight = foundRight;
+                    
+                    if (l)
+                    {
+                        qLeft = LeftSites[LeftSiteIdIndexes[edge.Left]];
+                        qRight = RightSites[RightSiteIdIndexes[edge.Right]];
+                    }
+                    else
+                    {
+                        qLeft = LeftSites[LeftSiteIdIndexes[edge.Right]];
+                        qRight = RightSites[RightSiteIdIndexes[edge.Left]];
+                    }
+                }
+                else
+                {
+                    qLeft = foundLeft;
+                    qRight = foundRight;
+                    
+                    if (l)
+                    {
+                        lLeft = LeftSites[LeftSiteIdIndexes[edge.Left]];
+                        lRight = RightSites[RightSiteIdIndexes[edge.Right]];
+                    }
+                    else
+                    {
+                        lLeft = LeftSites[LeftSiteIdIndexes[edge.Right]];
+                        lRight = RightSites[RightSiteIdIndexes[edge.Left]];
+                    }
+                }
+                return true;
+            }
+            lLeft = default;
+            lRight = default;
+            qLeft = default;
+            qRight = default;
+            return false;
+        }
+
         public void Execute()
         {
             const int capacity = 1024;
@@ -112,12 +255,19 @@ namespace Voronoi
             NativeArray<VSite>.Copy(RightSites, 0, Sites, LeftSites.Length, RightSites.Length);
             for (var i = 0; i < LeftSites.Length; i++) SiteIdIndexes[LeftSites[i].Id] = i;
             for (var i = 0; i < RightSites.Length; i++) SiteIdIndexes[RightSites[i].Id] = i + LeftSites.Length;
+            
+            DrawHull(LeftConvexHull, Color.HSVToRGB(0.6f, 1f, 1f));
+            DrawEdges(LeftEdges, Color.HSVToRGB(0.6f, 0.5f, 1f));
+            DrawHull(RightConvexHull, Color.HSVToRGB(0, 1f, 1f));
+            DrawEdges(RightEdges, Color.HSVToRGB(0, 0.5f, 1f));
 
             // merge convex hulls and find upper and lower tangents
             ConvexHull.AddRange(Voronoi.ConvexHull.Merge(LeftConvexHull, RightConvexHull, 
                 out var lLeft, out var lRight,
                 out var qLeft, out var qRight));
 
+            TryGetEntry(out lLeft, out lRight, out qLeft, out qRight);
+            
             left = lLeft;
             right = lRight;
 
@@ -193,7 +343,6 @@ namespace Voronoi
             regionEnterEdges[startEdge.Right] = VEdge.Null;
             regionEnterEdgesIndexes[startEdge.Left] = -1;
             regionEnterEdgesIndexes[startEdge.Right] = -1;
-            
 
             // edges
             while (!(left == qLeft && right == qRight))
@@ -216,6 +365,7 @@ namespace Voronoi
                 {
                     var newEdge = new VEdge(currentPoint, lVertex, leftId, rightId);
                     newEdges.Add(newEdge);
+                    // DrawEdge(newEdge, Color.yellow);
                     HandleLeftEdge(leftId, newEdge.End, newEdge.End, lEdge, leftEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref leftEdgeIndexesToRemove);
                     HandleRightEdge(rightId, newEdge.End, newEdge.End, rEdge, rightEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref rightEdgeIndexesToRemove);
                     continue;
@@ -225,12 +375,14 @@ namespace Voronoi
                 {
                     var newEdge = new VEdge(currentPoint, lVertex, leftId, rightId);
                     newEdges.Add(newEdge);
+                    // DrawEdge(newEdge, Color.yellow);
                     HandleLeftEdge(leftId, newEdge.End, lVertex, lEdge, leftEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref leftEdgeIndexesToRemove);
                 }
                 else
                 {
                     var newEdge = new VEdge(currentPoint, rVertex, leftId, rightId);
                     newEdges.Add(newEdge);
+                    // DrawEdge(newEdge, Color.yellow);
                     HandleRightEdge(rightId, newEdge.End, rVertex, rEdge, rightEdgeIndex, ref regionEnterPoints, ref regionEnterEdges, ref regionEnterEdgesIndexes, ref rightEdgeIndexesToRemove);
                 }
             }
@@ -508,6 +660,8 @@ namespace Voronoi
         {
             return new VoronoiMerger
             {
+                bounds = left.bounds,
+                
                 LeftSites = left.Sites,
                 LeftEdges = left.Edges,
                 LeftRegions = left.Regions,
@@ -536,6 +690,8 @@ namespace Voronoi
         {
             return new VoronoiMerger
             {
+                bounds = left.bounds,
+                
                 LeftSites = left.Sites,
                 LeftEdges = left.Edges,
                 LeftRegions = left.Regions,

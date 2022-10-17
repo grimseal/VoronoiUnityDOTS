@@ -39,6 +39,16 @@ namespace Voronoi.Structures
 		}
 		
 
+		public VEdge(float2 start, float2 end, int left, int right, int neighbor)
+		{
+			Start = start;
+			End = end;
+			Left = left;
+			Right = right;
+			Neighbor = neighbor;
+		}
+		
+
 		public VEdge(double2 start, double2 end, int left, int right)
 		{
 			Start = (float2) start;
@@ -71,5 +81,9 @@ namespace Voronoi.Structures
 		}
 
 		public static readonly VEdge Null = new VEdge(float2.zero, float2.zero, -1, -1);
+
+		public bool IsRay => float.IsNaN(End.x);
+
+		public VEdge GetFlip() => new VEdge(End, Start, Right, Left);
 	}
 }

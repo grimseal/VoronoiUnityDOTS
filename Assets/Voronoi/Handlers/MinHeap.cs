@@ -1,6 +1,7 @@
 // ReSharper disable CheckNamespace
 using System;
 using Unity.Collections;
+using Voronoi.Structures;
 
 namespace Voronoi
 {

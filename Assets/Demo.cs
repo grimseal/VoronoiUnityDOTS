@@ -5,6 +5,7 @@ using UnityEngine;
 using Debug = UnityEngine.Debug;
 using Random = UnityEngine.Random;
 using NaughtyAttributes;
+using static Voronoi.VoronoiDebug;
 
 public class Demo : MonoBehaviour
 {
@@ -43,8 +44,14 @@ public class Demo : MonoBehaviour
         Debug.Log($"elapsed time {sw.ElapsedMilliseconds}ms");
 
         if (!debugRender) return;
+        DebugRender(diagram.Edges, Color.HSVToRGB(0f, 0f, 0.33f), Color.HSVToRGB(0f, 0f, .66f), 6);
+
         foreach (var edge in diagram.Edges)
-            Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.white, float.MaxValue);
+            Debug.DrawLine(diagram.Sites[edge.Left].ToVector3(), diagram.Sites[edge.Right].ToVector3(),
+                Color.HSVToRGB(0, 0, 0.25f), float.MaxValue);
+
+        // foreach (var edge in diagram.Edges)
+            // Debug.DrawLine(edge.Start.ToVector3(), edge.End.ToVector3(), Color.white, float.MaxValue);
     }
 
     private float2[] GenerateRandomPoints(float w, float h, int c)

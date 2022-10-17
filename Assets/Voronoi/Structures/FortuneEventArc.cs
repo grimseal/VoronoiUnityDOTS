@@ -1,5 +1,4 @@
-﻿// ReSharper disable CheckNamespace
-namespace Voronoi
+﻿namespace Voronoi.Structures
 {
     internal struct FortuneEventArc
     {

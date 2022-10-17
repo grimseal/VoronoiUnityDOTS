@@ -1,7 +1,6 @@
-// ReSharper disable CheckNamespace
 using Unity.Mathematics;
 
-namespace Voronoi
+namespace Voronoi.Structures
 {
 	internal struct FortuneEvent
 	{

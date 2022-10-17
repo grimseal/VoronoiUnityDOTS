@@ -1,4 +1,3 @@
-// ReSharper disable CheckNamespace
 using Unity.Mathematics;
 
 namespace Voronoi
